@@ -984,6 +984,111 @@ else:  # st.session_state.view == "price"
         )
 
 
+# --- Architecture justification (shared, appears on both views) ---------
+
+DRIFT_LOG_CSV = ROOT / "backtest_results" / "drift_log.csv"
+
+
+@st.cache_data
+def load_drift_log():
+    if not DRIFT_LOG_CSV.exists():
+        return None
+    return pd.read_csv(DRIFT_LOG_CSV)
+
+
+st.markdown("---")
+st.markdown("## Architecture justification — did the LSTM earn its complexity?")
+st.markdown(
+    "I tested both production models against an XGBoost baseline on the "
+    "same data, same features, same train/val/holdout splits. Two "
+    "different answers per model, both surfaced here rather than buried. "
+    "**Load:** tied on average, LSTM wins on tails. **Price:** XGBoost "
+    "wins everywhere — including the dispatch P&L. Honest finding. "
+    "Production currently runs LSTM v4 + M10 clip for price; swap to "
+    "XGBoost is on the follow-up list."
+)
+
+# Static headline comparison from the backtest CSVs.
+st.markdown(
+    """
+    <div class="stat-grid" style="grid-template-columns: repeat(2, 1fr);">
+        <div class="stat-cell">
+            <div class="stat-label">Load model · 70-day holdout
+                <span class="info-tip">ⓘ<span class="info-tip-content">
+                    Same target (TSO error), same features (47 tabular),
+                    same train/val splits. XGBoost matches average MAE
+                    but LSTM wins on worst-10% days by 34 % and has
+                    better-calibrated quantile bands (78 % vs 70 %).
+                </span></span>
+            </div>
+            <div class="stat-value" style="font-size: 1rem;">
+                LSTM <b>393 MW</b> · XGBoost <b>389 MW</b><br>
+                <span style="font-size: 0.85rem; color: rgba(255,255,255,0.7);">
+                    tied on avg · LSTM −34 % on worst-10 %
+                </span>
+            </div>
+        </div>
+        <div class="stat-cell">
+            <div class="stat-label">Price model · 65-day extended holdout
+                <span class="info-tip">ⓘ<span class="info-tip-content">
+                    Same target (raw EPEX price), same 50 features
+                    (47 + 3 engineered VRE features), same sample
+                    weights. XGBoost wins by 25 % on average MAE,
+                    16 pp on skill vs naive, and +1.9 pp on dispatch
+                    P&L. Stripping the engineered features doesn't
+                    change the result — the win is purely architectural.
+                </span></span>
+            </div>
+            <div class="stat-value" style="font-size: 1rem;">
+                LSTM+clip <b>25.0 €</b> · XGBoost <b>18.9 €</b><br>
+                <span style="font-size: 0.85rem; color: rgba(255,255,255,0.7);">
+                    XGBoost wins · +€8 k more battery P&L uplift
+                </span>
+            </div>
+        </div>
+    </div>
+    """,
+    unsafe_allow_html=True,
+)
+
+# Live trace from drift_log — both models score yesterday's actuals daily.
+drift = load_drift_log()
+if drift is not None and len(drift) >= 2:
+    st.markdown(
+        "**Live trace.** The daily drift monitor scores both architectures "
+        "against yesterday's realised actuals. Builds over time — needs "
+        "~14 days of post-deployment data before the rolling pattern is "
+        "clear. Updated every day via the GitHub Action."
+    )
+    has_xgb_load = drift.get("load_mae_xgb_mw") is not None and drift["load_mae_xgb_mw"].notna().any()
+    has_xgb_price = drift.get("price_mae_xgb_eur") is not None and drift["price_mae_xgb_eur"].notna().any()
+    if has_xgb_load or has_xgb_price:
+        cols = st.columns(2)
+        if has_xgb_load:
+            with cols[0]:
+                st.markdown("### Load — daily P50 MAE")
+                st.plotly_chart(
+                    charts.architecture_drift_chart(drift, model="load"),
+                    use_container_width=True,
+                    config={"displaylogo": False},
+                    key="chart_arch_drift_load",
+                )
+        if has_xgb_price:
+            with cols[1]:
+                st.markdown("### Price — daily P50 MAE")
+                st.plotly_chart(
+                    charts.architecture_drift_chart(drift, model="price"),
+                    use_container_width=True,
+                    config={"displaylogo": False},
+                    key="chart_arch_drift_price",
+                )
+    else:
+        st.info(
+            "XGBoost scoring just enabled — the live trace will populate "
+            "from tomorrow's daily refresh onwards."
+        )
+
+
 # --- Methodology footer (shared) ----------------------------------------
 
 st.markdown("---")

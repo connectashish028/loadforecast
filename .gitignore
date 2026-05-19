@@ -52,12 +52,15 @@ Thumbs.db
 !backtest_results/lstm_vs_xgboost_price.csv
 !backtest_results/lstm_vs_xgboost_price_extended.csv
 
-# Model artifacts — only the deployed models are committed; experiments stay local.
-# Older versions (price_quantile_v1, v3, lstm_attention_v1, lstm_plain_v1,
-# lstm_weather_v1, best_*.h5) are intentionally not tracked.
+# Model artifacts — only the deployed + comparison-baseline models are committed;
+# experiments stay local. Older versions (price_quantile_v1, v3,
+# lstm_attention_v1, lstm_plain_v1, lstm_weather_v1, best_*.h5,
+# xgboost_price_v1_stripped) are intentionally not tracked.
 model_checkpoints/*
 !model_checkpoints/lstm_quantile_v1/
 !model_checkpoints/price_quantile_v4/
+!model_checkpoints/xgboost_load_v1/
+!model_checkpoints/xgboost_price_v1/
 mlruns/
 models/production/
 models/candidates/

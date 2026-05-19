@@ -550,7 +550,51 @@ def price_pnl_chart(pnl: pd.DataFrame, title: str | None = None) -> go.Figure:
     return fig
 
 
-__all__ = ["forecast_chart", "skill_chart", "error_chart",
+def architecture_drift_chart(drift_log, model: str, title: str | None = None) -> go.Figure:
+    """Daily MAE trace: LSTM (lilac) vs XGBoost (blue) on the same target.
+
+    `drift_log` must have columns:
+      - delivery_date
+      - {load,price}_mae_lstm_{mw,eur}
+      - {load,price}_mae_xgb_{mw,eur}
+    `model`: 'load' or 'price'.
+    """
+    df = drift_log.copy()
+    df["delivery_date"] = pd.to_datetime(df["delivery_date"])
+    df = df.sort_values("delivery_date")
+
+    if model == "load":
+        lstm_col, xgb_col = "load_mae_lstm_mw", "load_mae_xgb_mw"
+        unit = "MW per QH"
+    else:
+        lstm_col, xgb_col = "price_mae_lstm_eur", "price_mae_xgb_eur"
+        unit = "€/MWh"
+
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(
+        x=df["delivery_date"], y=df[lstm_col], mode="lines+markers",
+        line=dict(color=PREDICTION, width=2),
+        marker=dict(size=4),
+        name="LSTM",
+        hovertemplate="%{x|%Y-%m-%d}<br>%{y:.2f}<extra>LSTM</extra>",
+    ))
+    fig.add_trace(go.Scatter(
+        x=df["delivery_date"], y=df[xgb_col], mode="lines+markers",
+        line=dict(color=ACTUAL, width=2),
+        marker=dict(size=4),
+        name="XGBoost",
+        hovertemplate="%{x|%Y-%m-%d}<br>%{y:.2f}<extra>XGBoost</extra>",
+    ))
+    layout = _base_layout(title=title, height=280)
+    layout["yaxis"] = {**_AXIS, "title": f"Daily P50 MAE ({unit})"}
+    layout["xaxis"] = {**_AXIS, "title": "Delivery date"}
+    layout["hovermode"] = "x unified"
+    fig.update_layout(**layout)
+    return fig
+
+
+__all__ = ["architecture_drift_chart",
+           "forecast_chart", "skill_chart", "error_chart",
            "ablation_chart", "hour_profile_chart",
            "price_forecast_chart",
            "price_hour_profile_chart",

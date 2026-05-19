@@ -122,13 +122,17 @@ def refresh(
             if existing_end is None:
                 start = DEFAULT_START
             else:
-                # Re-fetch the last 24h to absorb late corrections — but
+                # Re-fetch the last 72h to absorb late corrections — but
                 # never start in the future. The parquet's index can
                 # legitimately extend past "now" (TSO publishes day-ahead
-                # forecasts for tomorrow), so a naive `existing_end - 24h`
+                # forecasts for tomorrow), so a naive `existing_end - 72h`
                 # can leave every source with nothing to fetch.
+                # 72h chosen because SMARD occasionally publishes
+                # corrections 1-2 days after the original publication
+                # (one TSO's feed dropping out gets retroactively patched);
+                # the 24h window we used before missed those.
                 now = pd.Timestamp(datetime.now(UTC)).floor("15min")
-                start = (min(existing_end, now) - pd.Timedelta(hours=24)).floor("15min")
+                start = (min(existing_end, now) - pd.Timedelta(hours=72)).floor("15min")
 
     existing_rows_before = (
         len(pd.read_parquet(parquet_path, columns=[]).index)

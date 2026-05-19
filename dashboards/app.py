@@ -1066,18 +1066,18 @@ if drift is not None and len(drift) >= 2:
         cols = st.columns(2)
         if has_xgb_load:
             with cols[0]:
+                st.markdown("### Load — daily P50 MAE")
                 st.plotly_chart(
-                    charts.architecture_drift_chart(drift, model="load",
-                                                    title="Load — daily P50 MAE"),
+                    charts.architecture_drift_chart(drift, model="load"),
                     use_container_width=True,
                     config={"displaylogo": False},
                     key="chart_arch_drift_load",
                 )
         if has_xgb_price:
             with cols[1]:
+                st.markdown("### Price — daily P50 MAE")
                 st.plotly_chart(
-                    charts.architecture_drift_chart(drift, model="price",
-                                                    title="Price — daily P50 MAE"),
+                    charts.architecture_drift_chart(drift, model="price"),
                     use_container_width=True,
                     config={"displaylogo": False},
                     key="chart_arch_drift_price",

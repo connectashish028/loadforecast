@@ -8,6 +8,7 @@ pandas>=2.2,<2.3
 pyarrow>=15.0
 scikit-learn>=1.4,<1.6
 scipy>=1.11
+xgboost>=2.0
 holidays>=0.50
 requests>=2.32
 python-dateutil>=2.9

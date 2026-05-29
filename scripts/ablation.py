@@ -1,9 +1,12 @@
-"""M4 part 3 — feature ablation.
+"""M4 part 3 — feature ablation. HISTORICAL — output is archived.
 
-Trains five LSTM variants, each adding one feature group on top of the
-previous, and scores them on the same 70-date stratified holdout the
-rest of the project uses. Output: backtest_results/ablation_summary.csv
-plus per-variant meta in model_checkpoints/ablation/.
+This script ran once during the M4 LSTM exploration phase. It trained
+five LSTM variants, each adding one feature group on top of the
+previous, and scored them on the 70-date stratified holdout. The
+output `backtest_results/ablation_summary.csv` is committed and
+rendered by the dashboard's "Where the error reduction comes from"
+chart. The script is preserved for reproducibility but is NOT part
+of the production pipeline (XGBoost is the production model).
 
 Variants (encoder / decoder, calendar always on):
   A  calendar only

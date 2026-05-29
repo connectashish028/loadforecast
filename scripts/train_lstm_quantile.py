@@ -20,8 +20,6 @@ import numpy as np
 
 from loadforecast.backtest import issue_time_for, load_smard_15min
 from loadforecast.models.dataset import (
-    DEC_FEATURE_NAMES,
-    ENC_FEATURE_NAMES,
     WEATHER_COLS,
     FeatureScaler,
     build_dataset,
@@ -111,7 +109,7 @@ def main() -> None:
 
     print(f"\nValidation P50 residual MAE: {val_p50_mae:.1f} MW")
     print(f"  Implied P50 skill if generalised: {val_implied_skill:+.4f}")
-    print(f"\nInterval [P10, P90]:")
+    print("\nInterval [P10, P90]:")
     print(f"  Empirical coverage:   {inside:.3%}   (target ~80%)")
     print(f"  Mean width:           {avg_width:.1f} MW")
     print(f"  Quantile crossings:   {crossings:.3%}   (lower = better)")

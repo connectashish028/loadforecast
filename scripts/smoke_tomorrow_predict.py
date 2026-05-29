@@ -12,11 +12,8 @@ published) since that's the production-expected behaviour pre-12:30.
 """
 from __future__ import annotations
 
-import sys
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
-
-import numpy as np
 
 from loadforecast.backtest import issue_time_for, load_smard_15min
 from loadforecast.models.predict import (

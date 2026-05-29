@@ -51,11 +51,16 @@ class BatterySpec:
         return int(self.cycles_per_day * self.capacity_mwh / self.energy_per_slot)
 
 
+# Module-level default — BatterySpec is frozen, so sharing one instance
+# across calls is safe (B008 fix).
+_DEFAULT_SPEC = BatterySpec()
+
+
 def dispatch_pnl(
     charge_signal: np.ndarray,
     discharge_signal: np.ndarray,
     actual_prices: np.ndarray,
-    spec: BatterySpec = BatterySpec(),
+    spec: BatterySpec = _DEFAULT_SPEC,
 ) -> dict:
     """Greedy dispatch + realised P&L.
 

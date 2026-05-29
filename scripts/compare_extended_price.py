@@ -67,8 +67,10 @@ def _add_engineered_vre(features, df, issue_time):
 
 def _sample_weight(d, holidays_de):
     w = 1.0
-    if d.year in (2022, 2023): w *= 0.5
-    if d.weekday() == 6 or d in holidays_de: w *= 3.0
+    if d.year in (2022, 2023):
+        w *= 0.5
+    if d.weekday() == 6 or d in holidays_de:
+        w *= 3.0
     return w
 
 
@@ -169,7 +171,8 @@ def main():
 
     rows = []
     for i, d in enumerate(holdout_dates):
-        if i % 15 == 0: print(f"  day {i+1}/{len(holdout_dates)}: {d}")
+        if i % 15 == 0:
+            print(f"  day {i+1}/{len(holdout_dates)}: {d}")
         issue = issue_time_for(d)
         # LSTM v4 WITH M10 clip (production path)
         lstm_fc = price_quantile_predict_full(df, issue, apply_extreme_clip=True)
@@ -264,11 +267,13 @@ def main():
     print("Battery dispatch P&L (10 MW / 20 MWh, 90% RTE, 3 cycles/day):")
     spec = BatterySpec()
     pnl_rows = []
-    for d_str, day in out.groupby("issue_date"):
-        if len(day) != 96: continue
+    for _d_str, day in out.groupby("issue_date"):
+        if len(day) != 96:
+            continue
         a = day["y_true"].to_numpy()
         n = day["naive"].to_numpy()
-        if np.isnan(n).any(): continue
+        if np.isnan(n).any():
+            continue
         pnl_rows.append({
             "oracle": dispatch_pnl(a, a, a, spec)["net_pnl"],
             "naive": dispatch_pnl(n, n, a, spec)["net_pnl"],

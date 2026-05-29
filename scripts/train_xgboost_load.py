@@ -75,7 +75,7 @@ def main() -> None:
     train_dates = _drange(date(2022, 1, 15), date(2024, 12, 31))
     val_dates = _drange(date(2025, 1, 1), date(2025, 6, 30))
 
-    print(f"\nBuilding datasets...")
+    print("\nBuilding datasets...")
     X_train, y_train, feature_cols = build_xgb_dataset(df, train_dates)
     X_val, y_val, _ = build_xgb_dataset(df, val_dates)
     print(f"  train: X={X_train.shape}, y={y_train.shape}")

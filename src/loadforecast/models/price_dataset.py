@@ -38,7 +38,7 @@ import pandas as pd
 from ..backtest.loader import target_index_for
 from ..features.availability import usable_columns
 from ..features.calendar import calendar_features
-from .dataset import LOOKBACK_QH, QH_PER_DAY, WEATHER_COLS
+from .dataset import LOOKBACK_QH, WEATHER_COLS
 
 PRICE = "price__germany_luxembourg"
 LOAD = "actual_cons__grid_load"

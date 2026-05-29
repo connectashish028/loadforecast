@@ -115,7 +115,7 @@ def main() -> None:
     train_dates = _drange(date(2022, 1, 15), date(2025, 12, 31))
     val_dates = _drange(date(2026, 1, 1), date(2026, 2, 28))
 
-    print(f"\nBuilding datasets (raw price target)...")
+    print("\nBuilding datasets (raw price target)...")
     X_train, y_train, w_train, feature_cols = build_dataset(df, train_dates)
     X_val, y_val, _, _ = build_dataset(df, val_dates)
     print(f"  train: X={X_train.shape}, y={y_train.shape}, weights={w_train.shape}")

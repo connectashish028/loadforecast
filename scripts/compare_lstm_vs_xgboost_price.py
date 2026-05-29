@@ -13,7 +13,6 @@ both forecasts so we can see the cost translation.
 """
 from __future__ import annotations
 
-import json
 from pathlib import Path
 
 import numpy as np
@@ -196,17 +195,17 @@ def main() -> None:
     print(f"  ({len(out):,} 15-min slots, raw model outputs, no M10 post-processing)")
     print("=" * 78)
     print()
-    print(f"  P50 MAE (EUR/MWh):")
+    print("  P50 MAE (EUR/MWh):")
     print(f"    LSTM = {mae_lstm:>6.2f}   XGBoost = {mae_xgb:>6.2f}   Naive yesterday = {mae_naive:>6.2f}")
     print(f"    Skill vs naive: LSTM = {(1-mae_lstm/mae_naive)*100:>+5.1f} %   XGBoost = {(1-mae_xgb/mae_naive)*100:>+5.1f} %")
     print()
-    print(f"  Daily spread MAE (EUR/MWh) — what dispatch cares about:")
+    print("  Daily spread MAE (EUR/MWh) — what dispatch cares about:")
     print(f"    LSTM = {spread_mae_lstm:>6.2f}   XGBoost = {spread_mae_xgb:>6.2f}   Naive = {spread_mae_naive:>6.2f}")
     print()
-    print(f"  Worst-10% days MAE (by naive):")
+    print("  Worst-10% days MAE (by naive):")
     print(f"    LSTM = {w_lstm:>6.2f}   XGBoost = {w_xgb:>6.2f}   Naive = {w_naive:>6.2f}")
     print()
-    print(f"  80% band coverage:")
+    print("  80% band coverage:")
     print(f"    LSTM = {cov_lstm*100:>5.1f} %   XGBoost = {cov_xgb*100:>5.1f} %  (target 80%)")
     print()
     print(f"  Battery P&L on {n_pnl_days} days (10 MW / 20 MWh / 90% RTE / 3 cycles/day):")
@@ -219,7 +218,7 @@ def main() -> None:
     # Verdict
     gap_mae = mae_lstm - mae_xgb
     gap_pnl = pct_lstm - pct_xgb
-    print(f"  Verdict:")
+    print("  Verdict:")
     if abs(gap_mae) < 1.0:
         print(f"    Average MAE: tied ({'LSTM' if gap_mae < 0 else 'XGBoost'} better by {abs(gap_mae):.2f} EUR/MWh)")
     else:

@@ -18,10 +18,9 @@ import time
 from datetime import date, timedelta
 from pathlib import Path
 
+import holidays as hols
 import numpy as np
 import pandas as pd
-
-import holidays as hols
 
 from loadforecast.backtest import issue_time_for, load_smard_15min
 from loadforecast.models.dataset import FeatureScaler
@@ -190,7 +189,7 @@ def main() -> None:
 
     print(f"\nValidation P50 MAE (full features): {val_p50_mae:>7.2f} €/MWh")
     print(f"Validation P50 / mean |y|:         {val_p50_mae / val_mean_abs_y * 100:>7.2f} %")
-    print(f"\nInterval [P10, P90]:")
+    print("\nInterval [P10, P90]:")
     print(f"  Empirical coverage:    {inside:.3%}   (target ~80%)")
     print(f"  Mean width:            {avg_width:.1f} €/MWh")
     print(f"  Quantile crossings:    {crossings:.3%}")

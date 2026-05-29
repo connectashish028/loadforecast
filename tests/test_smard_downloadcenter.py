@@ -70,7 +70,7 @@ def test_fetch_chunks_a_long_window():
     # 365 days / 90 days per chunk → 5 chunks (4 full + 1 partial).
     assert 4 <= len(calls) <= 5, f"expected ~5 chunks, got {len(calls)}"
     # Chunks must be contiguous and inside the requested window.
-    for (s, e), (s2, _) in zip(calls, calls[1:], strict=False):
+    for (_s, e), (s2, _) in zip(calls, calls[1:], strict=False):
         assert e == s2, "chunk boundaries must touch"
     assert calls[0][0] == start
     assert calls[-1][1] == end

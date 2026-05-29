@@ -140,14 +140,10 @@ def main() -> None:
     mae_xgb_worst10 = float(worst10_by_tso["mae_xgb"].mean())
     mae_tso_worst10 = float(worst10_by_tso["mae_tso"].mean())
 
-    # Hour-of-day MAE (where each model wins)
+    # Hour-of-day MAE (where each model wins) — computed but not printed
+    # in this summary; useful via the saved CSV for further analysis.
     out["target_ts"] = pd.to_datetime(out["target_ts"], utc=True)
     out["hour"] = out["target_ts"].dt.tz_convert("Europe/Berlin").dt.hour
-    hour_mae = out.groupby("hour").agg(
-        lstm=("abs_err_lstm", "mean"),
-        xgb=("abs_err_xgb", "mean"),
-        tso=("abs_err_tso", "mean"),
-    )
 
     print()
     print("=" * 70)

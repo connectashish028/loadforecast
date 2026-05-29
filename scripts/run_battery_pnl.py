@@ -82,7 +82,7 @@ def main() -> None:
     cap = spec.capacity_mwh
     n_days = len(df)
     eur_per_mwh_per_day = summary_eur / (cap * n_days)
-    print(f"€ per day per MWh of battery capacity:")
+    print("€ per day per MWh of battery capacity:")
     print(f"  Perfect-foresight  : {eur_per_mwh_per_day['oracle_pnl']:>7.2f}")
     print(f"  Naive yesterday    : {eur_per_mwh_per_day['naive_pnl']:>7.2f}")
     print(f"  Model P50          : {eur_per_mwh_per_day['model_p50_pnl']:>7.2f}")
@@ -93,7 +93,7 @@ def main() -> None:
     naive_total = summary_eur["naive_pnl"]
     band_total = summary_eur["model_band_pnl"]
     p50_total = summary_eur["model_p50_pnl"]
-    print(f"Uplift over naive:")
+    print("Uplift over naive:")
     print(f"  Model P50          : {(p50_total - naive_total):>+9,.0f} €  "
           f"({(p50_total / naive_total - 1) * 100:+.1f} %)")
     print(f"  Model P10/P90      : {(band_total - naive_total):>+9,.0f} €  "

@@ -29,7 +29,7 @@ import pandas as pd
 
 from loadforecast.backtest import issue_time_for, load_smard_15min
 from loadforecast.models.dataset import FeatureScaler
-from loadforecast.models.price_dataset import PRICE, build_price_window
+from loadforecast.models.price_dataset import build_price_window
 
 PARQUET = "smard_merged_15min.parquet"
 MODEL_DIR = Path("model_checkpoints/price_quantile_v4")

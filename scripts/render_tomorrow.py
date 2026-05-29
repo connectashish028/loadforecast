@@ -17,8 +17,6 @@ from pathlib import Path
 from zoneinfo import ZoneInfo
 
 import matplotlib.pyplot as plt
-import numpy as np
-import pandas as pd
 
 from loadforecast.backtest import issue_time_for, load_smard_15min
 from loadforecast.models.predict import xgboost_load_predict_full

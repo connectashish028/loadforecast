@@ -699,7 +699,7 @@ else:  # st.session_state.view == "price"
                         % of theoretical-max arbitrage P&L a 10 MW / 20 MWh battery captures dispatching against the model's P50.
                     </span></span>
                 </div>
-                <div class="stat-value">97.1<span class="stat-unit">%</span></div>
+                <div class="stat-value">96.9<span class="stat-unit">%</span></div>
             </div>
             <div class="stat-cell">
                 <div class="stat-label">P&L uplift over naive

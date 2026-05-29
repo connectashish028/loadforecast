@@ -339,6 +339,11 @@ def xgboost_load_predict_full(
     # XGBoost handles NaN natively; no need for the LSTM's _fill_small_gaps fallback.
     X = features.to_numpy(dtype=np.float32)
     preds = np.stack([models[q].predict(X) for q in XGB_QUANTILES], axis=1)  # (96, 3)
+    # Sort per row so p10 <= p50 <= p90. Independent-quantile-regression
+    # XGBoost (one model per quantile) can produce crossings on ~0.5 % of
+    # slots; sorting is the standard well-known fix and preserves the
+    # quantile-level coverage.
+    preds.sort(axis=1)
     base = tso_fc.to_numpy()
 
     out = pd.DataFrame(
@@ -393,6 +398,8 @@ def xgboost_price_predict_full(
 
     X = features.to_numpy(dtype=np.float32)
     preds = np.stack([models[q].predict(X) for q in XGB_QUANTILES], axis=1)
+    # Sort per row so p10 <= p50 <= p90 — see comment in xgboost_load_predict_full.
+    preds.sort(axis=1)
 
     out = pd.DataFrame(
         {"p10": preds[:, 0], "p50": preds[:, 1], "p90": preds[:, 2]},

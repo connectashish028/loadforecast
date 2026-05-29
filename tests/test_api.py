@@ -48,7 +48,7 @@ def test_forecast_known_good_date(client):
     body = r.json()
 
     assert body["delivery_date"] == "2025-06-15"
-    assert body["model"] == "Probabilistic LoadCast v1"
+    assert body["model"] == "LoadCast — XGBoost v1"
     assert body["n_steps"] == 96
     assert len(body["horizons"]) == 96
 
@@ -90,7 +90,7 @@ def test_price_forecast_known_good_date(client):
     body = r.json()
 
     assert body["delivery_date"] == "2026-04-15"
-    assert body["model"] == "Probabilistic PriceCast v4"
+    assert body["model"] == "PriceCast — XGBoost v1"
     assert body["unit"] == "EUR/MWh"
     assert body["n_steps"] == 96
     assert len(body["horizons"]) == 96

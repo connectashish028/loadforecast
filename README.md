@@ -2,7 +2,7 @@
 
 [![Daily refresh](https://github.com/connectashish028/german-day-ahead-forecast/actions/workflows/daily_refresh.yml/badge.svg)](https://github.com/connectashish028/german-day-ahead-forecast/actions/workflows/daily_refresh.yml)
 
-> Two LSTMs trained on public German grid data. The **load model** beats the TSO's published forecast by **20 %** across a 14-month holdout. The **price model** captures **95 % of perfect-foresight battery P&L** (+€57 k uplift over a 61-day holdout vs a naive trader).
+> Production XGBoost quantile forecasters for the German day-ahead market. The **load model** beats the TSO's published forecast by **21 %** across a 14-month holdout. The **price model** captures **97 % of perfect-foresight battery P&L** on a 10 MW / 20 MWh battery (+€65 k uplift over a 61-day holdout, ~€1.9 M/year on a 100 MWh fleet). A seq2seq LSTM is retained as the live comparison baseline; both architectures are scored daily against realised actuals.
 
 ### → Live demo: **[german-load-forecast-v1.streamlit.app](https://german-load-forecast-v1.streamlit.app/)**
 
@@ -27,7 +27,7 @@ Most ML portfolio projects compare to a naive baseline and stop there. Beating r
 
 #### Load model
 
-Five LSTM variants, each adding one feature group on top of the previous, all scored on the same 70-day test set:
+Five iterations from the LSTM exploration phase, each adding one feature group. The findings transfer directly to the production XGBoost model — the lagged-TSO-error feature that drove the biggest LSTM lift (+13.9 pp) is also the production XGBoost's most important feature (14.9 % of total feature importance).
 
 | Variant | Improvement vs TSO | Δ vs previous |
 |---|---|---|
@@ -41,6 +41,8 @@ The single biggest lever is **showing the model the operator's recent errors**. 
 
 #### Price model
 
+The production price model is XGBoost. The LSTM v1→v4 iteration below is the history of *how I got there* — each iteration tackled a real failure mode of the LSTM, and the engineered features added during v4 (`vre_to_load_ratio`, `vre_percentile`) ended up benefiting the XGBoost ablation too. The architecture comparison (XGBoost vs LSTM v4 + M10 clip) on the same 61-day holdout: **XGBoost wins by 25 % average MAE and +1.9 pp dispatch P&L** — see the live dashboard's "Architecture justification" panel.
+
 Four iterations, each tackling a specific failure mode:
 
 | Version | Change | Result on the 61-day Mar–Apr 2026 holdout |
@@ -51,7 +53,7 @@ Four iterations, each tackling a specific failure mode:
 | **v4** | + Engineered `vre_to_load_ratio` / `vre_percentile`; 3× weight on holidays + Sundays; 0.5× weight on 2022–2023 | **+36 % MAE vs naive on average, +60 % on the worst 10 % of days** |
 | v4 + clip | Domain-rule shift on holiday × top-1 % VRE days, calibrated on 2024–2025 (the M10 patch) | May 1, 2026 (−500 €/MWh): MAE 81.8 → 72.8 |
 
-**The headline trading metric: dispatch a 10 MW / 20 MWh battery against the v4 P50 forecast on each delivery day. The model captures 95.0 % of perfect-foresight P&L vs the naive baseline's 81.3 %** — a +€57 k uplift over the 61-day holdout, ~€1.7 M/year on a 100 MWh fleet.
+**The headline trading metric: dispatch a 10 MW / 20 MWh battery against the XGBoost P50 forecast on each delivery day. The model captures 97.1 % of perfect-foresight P&L vs the naive baseline's 81.3 %** — a +€65 k uplift over the 61-day holdout, ~€1.9 M/year on a 100 MWh fleet.
 
 A surprise finding: P50-only dispatch out-performs P10-charge / P90-discharge dispatch by ~2 pp. **Battery dispatch is a ranking problem, not a calibration problem** — what matters is which slots are cheapest, not the absolute spread.
 
@@ -64,34 +66,38 @@ flowchart LR
     OM[Open-Meteo<br>weather NWP] --> REFRESH
 
     REFRESH[data.refresh<br>idempotent ingest] --> PARQUET[(merged.parquet)]
-    PARQUET --> FEATS[leakage-safe<br>windowing]
-    FEATS --> LOAD[Load LSTM<br>P10/P50/P90<br>predicts TSO error]
-    FEATS --> PRICE[Price LSTM<br>P10/P50/P90<br>predicts raw price]
+    PARQUET --> FEATS[leakage-safe<br>feature engineering]
 
-    LOAD --> DASH[Streamlit dashboard]
-    PRICE --> CLIP[M10 domain clip<br>extreme-tail rule]
-    CLIP --> DASH
-    LOAD --> API[FastAPI /forecast]
+    FEATS --> XGB_L[Load XGBoost<br>P10/P50/P90<br>production]
+    FEATS --> XGB_P[Price XGBoost<br>P10/P50/P90<br>production]
+    FEATS --> LSTM[LSTM load + price<br>comparison baseline]
+
+    XGB_L --> DASH[Streamlit dashboard]
+    XGB_P --> DASH
+    LSTM --> COMP[Architecture<br>justification panel]
+    COMP --> DASH
+    XGB_L --> API[FastAPI /forecast]
+    XGB_P --> API
     PARQUET --> DASH
-    LOAD --> BT_L[Backtest vs TSO]
-    PRICE --> BT_P[Backtest vs naive]
 
-    CRON[GitHub Actions<br>daily 13:00 CET] --> REFRESH
+    XGB_L --> DRIFT[Daily drift monitor<br>all 4 predictors]
+    XGB_P --> DRIFT
+    LSTM --> DRIFT
+
+    CRON[GitHub Actions<br>daily 09:00 UTC] --> REFRESH
 ```
 
 Every prediction respects an **issue-time cutoff of 12:00 Berlin time on the day before delivery** — the EPEX day-ahead market gate. A "corrupt-future" test scrambles every post-cutoff value in the source data and asserts the resulting features are byte-for-byte identical, so leakage isn't a thing we hope for, it's tested.
 
-A **GitHub Action** runs the refresh + smoke-check + tomorrow-PNG renders every day at 13:00 CET. The deployed Streamlit dashboard auto-redeploys on every commit, so the live forecasts are always current with no human intervention.
+A **GitHub Action** runs the refresh + smoke-check + drift monitor + tomorrow-PNG renders every day at 09:00 UTC (11:00 CEST). The deployed Streamlit dashboard auto-redeploys on every commit, so the live forecasts are always current with no human intervention.
 
 ## Approach
 
-- **Residual learning for load.** Predicts the *operator's error* — `actual − TSO_forecast` — and adds the correction. The operator already nails calendar + climatology; the model only learns the systematic remainder.
-- **Raw target for price.** No published baseline exists for day-ahead price, so the model targets the raw clearing price; naive yesterday-same-quarter-hour is the comparison.
-- **Seq2seq LSTM.** 64-unit encoder reads 7 days of history; hands state to a 64-unit decoder generating 96 quarter-hour predictions. Three quantile heads (P10/P50/P90), pinball loss, ~36 k parameters per model. Both train in under 5 minutes on CPU.
-- **Graceful degradation when features publish late.** SMARD's day-ahead VRE forecast occasionally publishes after the EPEX gate. The price model is trained with 30 % feature-dropout on it so it falls back to weather + load + calendar; the dashboard surfaces a `DEGRADED MODE` badge in that state.
-- **Domain rule for the negative-price tail.** Pinball-loss P50 structurally can't reach −500 €/MWh on rare regime days. A small post-processing shift, calibrated empirically on out-of-holdout data, applies on holiday × top-1 %-VRE days.
-- **Self-refreshing data layer.** SMARD and Open-Meteo expose authentication-free APIs. One CLI command rebuilds the parquet; a GitHub Action does it nightly at 13:00 CET, smoke-checks both models, and commits both PNGs back.
-- **Leakage tested.** A "corrupt-future" test scrambles every post-issue value and asserts the feature arrays are byte-identical.
+- **Production architecture: XGBoost quantile regressors.** One model per quantile, native `reg:quantileerror`. 47 features for load, 50 for price (47 base + 3 engineered VRE features). Tested against a seq2seq LSTM baseline on the same data layer — LSTM ties on load average / wins worst-10 %, XGBoost wins on price across every metric. Both architectures still run daily for the live comparison trace.
+- **Residual learning for load.** Predicts the operator's error — `actual − TSO_forecast` — and adds the correction. The operator already nails calendar + climatology; the model only learns the systematic remainder.
+- **Raw target for price.** No public baseline exists; the model targets the raw clearing price. Naive yesterday-same-quarter-hour is the comparison.
+- **Self-refreshing data layer.** SMARD and Open-Meteo expose authentication-free APIs. One CLI command rebuilds the parquet; a GitHub Action runs it daily at 09:00 UTC, smoke-checks both models, scores both architectures via the drift monitor, and commits the refreshed artifacts back.
+- **Leakage tested.** A "corrupt-future" test scrambles every post-issue value in the source data and asserts the resulting features are byte-identical. 24/24 leakage tests pass.
 
 ## Repo layout
 
@@ -99,16 +105,18 @@ A **GitHub Action** runs the refresh + smoke-check + tomorrow-PNG renders every 
 src/loadforecast/
   data/      # multi-source ingestion (SMARD API, SMARD downloadcenter, Open-Meteo)
   features/  # leakage-safe feature builders (calendar, lags, availability)
-  models/    # Keras models (load + price), windowing, predict wrappers, extreme-tail clip
+  models/    # Keras LSTMs + XGBoost wrappers, windowing, predict functions, extreme-tail clip
   backtest/  # rolling-origin evaluator + TSO + SARIMAX baselines
   serve/     # FastAPI inference service (load + price)
-dashboards/  # Streamlit dashboard with LOAD / PRICE views
+dashboards/  # Streamlit dashboard with LOAD / PRICE views + architecture-justification panel
 tests/       # pytest — leakage tests, baseline harness, API smoke
-scripts/     # training, refresh, render-PNG, smoke-check, P&L simulation, M10 calibration
+scripts/     # training, refresh, render-PNG, smoke-check, drift monitor, P&L sim, M10 calibration
 model_checkpoints/
-  lstm_quantile_v1/    # load model
-  price_quantile_v4/   # price model + extreme_clip.json
-backtest_results/      # holdout CSVs + battery-dispatch P&L
+  xgboost_load_v1/     # load model (production)
+  xgboost_price_v1/    # price model (production)
+  lstm_quantile_v1/    # LSTM load — comparison baseline
+  price_quantile_v4/   # LSTM price — comparison baseline (with extreme_clip.json from M10 era)
+backtest_results/      # holdout CSVs + battery-dispatch P&L + drift_log.csv (live trace)
 ```
 
 ## Quickstart
@@ -124,26 +132,27 @@ pytest -q
 # 2. Refresh the parquet from public APIs (~5 min)
 python -m loadforecast.data.refresh --rebuild --start 2022-01-01
 
-# 3. Train the load model (~3 min)
-python scripts/train_lstm_quantile.py
+# 3. Train the production XGBoost models (~30 s each)
+python scripts/train_xgboost_load.py
+python scripts/train_xgboost_price.py
 
-# 4. Train the price model + calibrate the M10 clip (~5 min)
+# 4. (Optional) Train the LSTM comparison baseline (~5 min each)
+python scripts/train_lstm_quantile.py
 python scripts/train_lstm_price_quantile.py
 python scripts/calibrate_extreme_clip.py
 
-# 5. Backtests + battery P&L
-python -m loadforecast.backtest --predictor lstm_weather \
-    --start 2025-01-01 --end 2026-04-30 --step-days 7 \
-    --out backtest_results/lstm_weather_step7.csv
-python scripts/backtest_price_quantile.py
+# 5. Architecture comparison + battery P&L
+python scripts/compare_lstm_vs_xgboost_load.py
+python scripts/compare_lstm_vs_xgboost_price.py
 python scripts/run_battery_pnl.py
 
 # 6. Dashboard
 streamlit run dashboards/app.py
 
-# 7. Or hit the load-model inference service
+# 7. Or hit the inference service
 uvicorn loadforecast.serve.api:app
-# then POST to localhost:8000/forecast {"delivery_date": "2026-05-08"}
+# POST localhost:8000/forecast {"delivery_date": "2026-05-08"}
+# POST localhost:8000/forecast/price {"delivery_date": "2026-05-08"}
 ```
 
 ## Data sources
@@ -158,7 +167,7 @@ All data is licensed CC-BY 4.0.
 
 ## What's next
 
-This project is feature-complete. The daily GitHub Action keeps the parquet, both tomorrow PNGs, and the deployed dashboard current; ongoing work is maintenance (data-source resilience, dependency upgrades) rather than new features.
+Active pivot toward production-grade trading-shop patterns: classical (SARIMAX) baseline + simple ensemble + risk-aware position sizing + trader-facing analytics panels. Tracked phase-by-phase via commits and PRs. The daily GitHub Action keeps both architectures' forecasts current; ongoing maintenance work is documented in commit messages.
 
 ## License
 

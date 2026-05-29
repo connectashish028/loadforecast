@@ -357,7 +357,7 @@ if st.session_state.view == "load":
         "German TSOs publish a day-ahead load forecast every afternoon — "
         "the anchor every utility and balancing party uses. This model "
         "corrects it using weather, calendar, and recent TSO error "
-        "patterns. **Cuts mean error by 20 % across the 14-month holdout.**"
+        "patterns. **Cuts mean error by 21 % across the 70-day holdout.**"
     )
 
     # --- Headline stats grid (load) -------------------------------------
@@ -923,8 +923,9 @@ else:  # st.session_state.view == "price"
     st.markdown("## How well the model captures the daily spread")
     st.markdown(
         "Holdout days binned by actual intra-day spread. Bars = actual "
-        "vs model P50 spread per quartile. Right-most bar gap = "
-        "pinball-loss median collapse: P50 can't fully reach the extremes."
+        "vs model P50 spread per quartile. Right-most bar gap is the "
+        "structural median-regression behavior — P50 always tracks the "
+        "conditional median, which compresses the tails on extreme days."
     )
     psq = price_spread_quartiles()
     if psq is not None and not psq.empty:
@@ -1004,19 +1005,19 @@ st.markdown(
                 <span class="info-tip">ⓘ<span class="info-tip-content">
                     Same target (TSO error), same features (47 tabular),
                     same train/val splits. XGBoost matches average MAE
-                    but LSTM wins on worst-10% days by 34 % and has
+                    but LSTM wins on worst-10% days by 25 % and has
                     better-calibrated quantile bands (78 % vs 70 %).
                 </span></span>
             </div>
             <div class="stat-value" style="font-size: 1rem;">
                 LSTM <b>393 MW</b> · XGBoost <b>389 MW</b><br>
                 <span style="font-size: 0.85rem; color: rgba(255,255,255,0.7);">
-                    tied on avg · LSTM −34 % on worst-10 %
+                    tied on avg · LSTM −25 % on worst-10 %
                 </span>
             </div>
         </div>
         <div class="stat-cell">
-            <div class="stat-label">Price model · 65-day extended holdout
+            <div class="stat-label">Price model · 66-day extended holdout
                 <span class="info-tip">ⓘ<span class="info-tip-content">
                     Same target (raw EPEX price), same 50 features
                     (47 + 3 engineered VRE features), same sample

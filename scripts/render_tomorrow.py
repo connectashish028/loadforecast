@@ -21,7 +21,7 @@ import numpy as np
 import pandas as pd
 
 from loadforecast.backtest import issue_time_for, load_smard_15min
-from loadforecast.models.predict import lstm_quantile_predict_full
+from loadforecast.models.predict import xgboost_load_predict_full
 
 PARQUET = "smard_merged_15min.parquet"
 TSO_COL = "fc_cons__grid_load"
@@ -52,7 +52,7 @@ def main() -> None:
         )
 
     print(f"Predicting delivery {tomorrow}, issue {issue}...")
-    fc = lstm_quantile_predict_full(df, issue)
+    fc = xgboost_load_predict_full(df, issue)
     if fc["p50"].isna().any():
         raise SystemExit("Forecast contains NaN — encoder/decoder window incomplete.")
 

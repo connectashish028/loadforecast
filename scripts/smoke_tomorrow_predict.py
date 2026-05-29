@@ -20,8 +20,8 @@ import numpy as np
 
 from loadforecast.backtest import issue_time_for, load_smard_15min
 from loadforecast.models.predict import (
-    lstm_quantile_predict_full,
-    price_quantile_predict_full,
+    xgboost_load_predict_full,
+    xgboost_price_predict_full,
 )
 
 PARQUET = "smard_merged_15min.parquet"
@@ -37,7 +37,7 @@ def main() -> int:
 
     # --- Load model -----------------------------------------------------
     try:
-        load_fc = lstm_quantile_predict_full(df, issue)
+        load_fc = xgboost_load_predict_full(df, issue)
         n_nan = int(load_fc["p50"].isna().sum())
         if n_nan > 0:
             failures.append(f"load: P50 has {n_nan}/96 NaN")
@@ -49,7 +49,7 @@ def main() -> int:
 
     # --- Price model ----------------------------------------------------
     try:
-        price_fc = price_quantile_predict_full(df, issue)
+        price_fc = xgboost_price_predict_full(df, issue)
         n_nan = int(price_fc["p50"].isna().sum())
         if n_nan > 0:
             failures.append(f"price: P50 has {n_nan}/96 NaN")

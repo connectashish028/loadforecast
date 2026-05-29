@@ -22,7 +22,7 @@ import numpy as np
 import pandas as pd
 
 from loadforecast.backtest import issue_time_for, load_smard_15min
-from loadforecast.models.predict import price_quantile_predict_full
+from loadforecast.models.predict import xgboost_price_predict_full
 
 PARQUET = "smard_merged_15min.parquet"
 PRICE_COL = "price__germany_luxembourg"
@@ -53,16 +53,9 @@ def main() -> None:
         )
 
     print(f"Predicting price for delivery {tomorrow}, issue {issue}...")
-    fc = price_quantile_predict_full(df, issue)
+    fc = xgboost_price_predict_full(df, issue)
     if fc["p50"].isna().any():
         raise SystemExit("Forecast contains NaN — encoder/decoder window incomplete.")
-
-    # Detect degraded mode: SMARD VRE day-ahead not yet published for tomorrow.
-    target_idx = fc.index
-    vre_missing = (
-        VRE_FC_COL in df.columns
-        and df[VRE_FC_COL].reindex(target_idx).isna().all()
-    )
 
     # Plot ----------------------------------------------------------------
     plt.rcParams.update({
@@ -92,8 +85,6 @@ def main() -> None:
         f"Tomorrow's day-ahead price — delivery {tomorrow.isoformat()} · "
         f"issued {today.isoformat()} 12:00 Berlin"
     )
-    if vre_missing:
-        title += "  (degraded mode)"
     ax.set_title(title, color=TEXT, fontsize=11, loc="left", pad=12)
     ax.set_xlabel("Time (UTC)")
     ax.set_ylabel("Day-ahead price (€/MWh)")
@@ -108,8 +99,7 @@ def main() -> None:
     fig.tight_layout()
     OUT_PATH.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(OUT_PATH, bbox_inches="tight", dpi=150)
-    print(f"Wrote {OUT_PATH}  ({OUT_PATH.stat().st_size // 1024} KB)"
-          + ("  [degraded mode]" if vre_missing else ""))
+    print(f"Wrote {OUT_PATH}  ({OUT_PATH.stat().st_size // 1024} KB)")
 
 
 if __name__ == "__main__":

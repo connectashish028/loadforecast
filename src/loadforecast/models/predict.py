@@ -23,6 +23,26 @@ DEFAULT_ATTENTION_DIR = Path("model_checkpoints/lstm_attention_v1")
 DEFAULT_WEATHER_DIR = Path("model_checkpoints/lstm_weather_v1")
 DEFAULT_QUANTILE_DIR = Path("model_checkpoints/lstm_quantile_v1")
 DEFAULT_PRICE_QUANTILE_DIR = Path("model_checkpoints/price_quantile_v4")
+DEFAULT_XGB_LOAD_DIR = Path("model_checkpoints/xgboost_load_v1")
+DEFAULT_XGB_PRICE_DIR = Path("model_checkpoints/xgboost_price_v1")
+XGB_QUANTILES = (0.10, 0.50, 0.90)
+_XGB_CACHE: dict[str, dict] = {}
+
+
+def _load_xgb(model_dir: Path) -> dict:
+    """Load and cache the three quantile XGBoost regressors for a checkpoint."""
+    import xgboost as xgb
+
+    key = str(model_dir.resolve())
+    if key in _XGB_CACHE:
+        return _XGB_CACHE[key]
+    models = {}
+    for q in XGB_QUANTILES:
+        reg = xgb.XGBRegressor()
+        reg.load_model(model_dir / f"xgb_q{int(q*100):02d}.json")
+        models[q] = reg
+    _XGB_CACHE[key] = models
+    return models
 
 
 @dataclass
@@ -293,12 +313,103 @@ def lstm_attention_explain(
     return pred, attn_map
 
 
+def xgboost_load_predict_full(
+    df: pd.DataFrame,
+    issue_time: pd.Timestamp,
+    *,
+    model_dir: Path | str = DEFAULT_XGB_LOAD_DIR,
+) -> pd.DataFrame:
+    """Production load forecast — XGBoost residual model + TSO baseline.
+
+    Matches `lstm_quantile_predict_full`'s interface so it's a drop-in
+    replacement. Returns a (96, 3) DataFrame with columns p10/p50/p90 in
+    MW per quarter-hour, indexed by tz-aware delivery timestamps.
+
+    Architecture chosen on the basis of the LSTM-vs-XGBoost ablation:
+    XGBoost ties LSTM on average MAE and wins on a clean tabular
+    feature set. See `scripts/compare_lstm_vs_xgboost_load.py`.
+    """
+    from ..features.build import build_target_day_features
+
+    models = _load_xgb(Path(model_dir))
+    features = build_target_day_features(df, issue_time)
+    tso_fc = tso_baseline_predict(df, issue_time)
+    target_idx = features.index
+
+    # XGBoost handles NaN natively; no need for the LSTM's _fill_small_gaps fallback.
+    X = features.to_numpy(dtype=np.float32)
+    preds = np.stack([models[q].predict(X) for q in XGB_QUANTILES], axis=1)  # (96, 3)
+    base = tso_fc.to_numpy()
+
+    out = pd.DataFrame(
+        {
+            "p10": base + preds[:, 0],
+            "p50": base + preds[:, 1],
+            "p90": base + preds[:, 2],
+        },
+        index=target_idx,
+    )
+    out.index.name = "target_ts"
+    return out
+
+
+def xgboost_price_predict_full(
+    df: pd.DataFrame,
+    issue_time: pd.Timestamp,
+    *,
+    model_dir: Path | str = DEFAULT_XGB_PRICE_DIR,
+) -> pd.DataFrame:
+    """Production day-ahead price forecast — XGBoost quantile regressor.
+
+    Matches `price_quantile_predict_full`'s interface (drop-in
+    replacement). Returns a (96, 3) DataFrame with columns p10/p50/p90
+    in EUR/MWh, indexed by tz-aware delivery timestamps.
+
+    Trained on the same 50-feature set as the LSTM v4 (47 from
+    features.build + 3 engineered VRE features). Architecture chosen
+    on the basis of the LSTM-vs-XGBoost ablation: XGBoost wins by
+    25 % average MAE and +1.9 pp dispatch P&L. See
+    `scripts/compare_lstm_vs_xgboost_price.py`.
+    """
+    from ..features.build import build_target_day_features
+
+    PRICE_VRE_FC_COL = "fc_gen__photovoltaics_and_wind"
+
+    models = _load_xgb(Path(model_dir))
+    features = build_target_day_features(df, issue_time)
+
+    # Add the 3 engineered VRE features that were present at training time.
+    vre_fc = features["tso_vre_fc"]
+    features["tso_vre_fc_present"] = (~vre_fc.isna()).astype(np.float32)
+    features["tso_vre_fc"] = vre_fc.fillna(0.0)
+    load_fc = features["tso_load_fc"]
+    safe_load = load_fc.where(load_fc > 0, 1.0)
+    features["vre_to_load_ratio"] = (features["tso_vre_fc"] / safe_load).astype(np.float32)
+    ref_window = df[PRICE_VRE_FC_COL].loc[
+        issue_time - pd.Timedelta(days=90): issue_time
+    ].dropna()
+    q90 = float(ref_window.quantile(0.90)) if len(ref_window) > 100 else 1.0
+    features["vre_percentile"] = (features["tso_vre_fc"] / max(q90, 1.0)).astype(np.float32)
+
+    X = features.to_numpy(dtype=np.float32)
+    preds = np.stack([models[q].predict(X) for q in XGB_QUANTILES], axis=1)
+
+    out = pd.DataFrame(
+        {"p10": preds[:, 0], "p50": preds[:, 1], "p90": preds[:, 2]},
+        index=features.index,
+    )
+    out.index.name = "target_ts"
+    return out
+
+
 __all__ = [
     "DEFAULT_ATTENTION_DIR",
     "DEFAULT_MODEL_DIR",
     "DEFAULT_PRICE_QUANTILE_DIR",
     "DEFAULT_QUANTILE_DIR",
     "DEFAULT_WEATHER_DIR",
+    "DEFAULT_XGB_LOAD_DIR",
+    "DEFAULT_XGB_PRICE_DIR",
     "LoadedModel",
     "lstm_attention_explain",
     "lstm_attention_predict",
@@ -307,4 +418,6 @@ __all__ = [
     "lstm_residual_predict",
     "lstm_weather_predict",
     "price_quantile_predict_full",
+    "xgboost_load_predict_full",
+    "xgboost_price_predict_full",
 ]

@@ -32,7 +32,10 @@ from fastapi.responses import RedirectResponse
 from pydantic import BaseModel, Field
 
 from ..backtest import issue_time_for, load_smard_15min
-from ..models.predict import lstm_quantile_predict_full, price_quantile_predict_full
+from ..models.predict import (
+    xgboost_load_predict_full,
+    xgboost_price_predict_full,
+)
 
 PARQUET_PATH = Path("smard_merged_15min.parquet")
 VRE_FC_COL = "fc_gen__photovoltaics_and_wind"
@@ -103,12 +106,14 @@ async def _lifespan(app: FastAPI):
 app = FastAPI(
     title="German Day-Ahead Forecasts (Load + Price)",
     description=(
-        "Probabilistic 96-step quarter-hourly forecasts. The load model "
-        "beats the TSO baseline by ~20 % MAE on a 14-month holdout. The "
-        "price model captures ~95 % of perfect-foresight battery P&L "
-        "on a 61-day holdout. Both return P10/P50/P90 quantile bands."
+        "Production XGBoost quantile forecasters for German grid load "
+        "and EPEX day-ahead clearing price. On a 10 MW / 20 MWh battery "
+        "dispatched against the price forecast, the system captures "
+        "~97 % of perfect-foresight P&L (+€65 k uplift vs naive over 61 "
+        "days). LSTM is kept as a comparison baseline; see "
+        "/forecast/architecture for the ablation."
     ),
-    version="0.2.0",
+    version="0.3.0",
     lifespan=_lifespan,
 )
 
@@ -151,7 +156,7 @@ def forecast(req: ForecastRequest) -> ForecastResponse:
             ),
         )
 
-    out = lstm_quantile_predict_full(df, issue)
+    out = xgboost_load_predict_full(df, issue)
     if out["p50"].isna().any():
         raise HTTPException(
             status_code=422,
@@ -171,7 +176,7 @@ def forecast(req: ForecastRequest) -> ForecastResponse:
     return ForecastResponse(
         delivery_date=req.delivery_date,
         issue_time=issue.to_pydatetime(),
-        model="Probabilistic LoadCast v1",
+        model="LoadCast — XGBoost v1",
         n_steps=len(horizons),
         horizons=horizons,
     )
@@ -202,7 +207,7 @@ def forecast_price(req: ForecastRequest) -> PriceForecastResponse:
             ),
         )
 
-    out = price_quantile_predict_full(df, issue)
+    out = xgboost_price_predict_full(df, issue)
     if out["p50"].isna().any():
         raise HTTPException(
             status_code=422,
@@ -230,7 +235,7 @@ def forecast_price(req: ForecastRequest) -> PriceForecastResponse:
     return PriceForecastResponse(
         delivery_date=req.delivery_date,
         issue_time=issue.to_pydatetime(),
-        model="Probabilistic PriceCast v4",
+        model="PriceCast — XGBoost v1",
         n_steps=len(horizons),
         degraded_mode=degraded,
         horizons=horizons,

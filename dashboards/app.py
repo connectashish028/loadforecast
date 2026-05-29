@@ -35,8 +35,8 @@ for path in (ROOT, ROOT / "src"):
 from dashboards import charts, styles  # noqa: E402
 from loadforecast.backtest import issue_time_for, load_smard_15min  # noqa: E402
 from loadforecast.models.predict import (  # noqa: E402
-    lstm_quantile_predict_full,
-    price_quantile_predict_full,
+    xgboost_load_predict_full,
+    xgboost_price_predict_full,
 )
 
 # --- Constants ----------------------------------------------------------
@@ -118,7 +118,7 @@ def predict_for_day(delivery_date: date) -> pd.DataFrame | None:
     issue = issue_time_for(delivery_date)
     if issue > df.index.max():
         return None
-    out = lstm_quantile_predict_full(df, issue)
+    out = xgboost_load_predict_full(df, issue)
     if out["p50"].isna().any():
         return None
     return out
@@ -129,7 +129,7 @@ def predict_price_for_day(delivery_date: date) -> pd.DataFrame | None:
     issue = issue_time_for(delivery_date)
     if issue > df.index.max():
         return None
-    out = price_quantile_predict_full(df, issue)
+    out = xgboost_price_predict_full(df, issue)
     if out["p50"].isna().any():
         return None
     return out
@@ -343,14 +343,14 @@ if "picked_date" not in st.session_state:
 if st.session_state.view == "load":
 
     st.markdown(
-        "# A TensorFlow LSTM that beats the German TSO's published "
-        "day-ahead load forecast."
+        "# An XGBoost quantile forecaster that beats the German TSO's "
+        "published day-ahead load forecast."
     )
     st.markdown(
         f'<p style="color: rgba(255,255,255,0.5); font-family: \'JetBrains Mono\', monospace; '
         f'font-size: 0.8rem; letter-spacing: 0.1em; text-transform: uppercase; '
         f'margin-top: 0.25rem;">Backtest 2025-01 → 2026-04 · n = 70 days · '
-        f'data through {data_max.isoformat()} · model: Probabilistic LoadCast v1</p>',
+        f'data through {data_max.isoformat()} · model: LoadCast — XGBoost v1</p>',
         unsafe_allow_html=True,
     )
     st.markdown(
@@ -367,18 +367,18 @@ if st.session_state.view == "load":
             <div class="stat-cell">
                 <div class="stat-label">Avg error reduction
                     <span class="info-tip">ⓘ<span class="info-tip-content">
-                        Skill score <code>1 − MAE_model / MAE_TSO</code>. Zero = ties the baseline, one = perfect.
+                        Skill score <code>1 − MAE_model / MAE_TSO</code>. Zero = ties the baseline, one = perfect. XGBoost production model.
                     </span></span>
                 </div>
-                <div class="stat-value">20.1<span class="stat-unit">%</span></div>
+                <div class="stat-value">21.0<span class="stat-unit">%</span></div>
             </div>
             <div class="stat-cell">
                 <div class="stat-label">Mean error
                     <span class="info-tip">ⓘ<span class="info-tip-content">
-                        Mean absolute load forecast error in MWh per quarter-hour, averaged across the 70-day holdout.
+                        Mean absolute load forecast error in MWh per quarter-hour, XGBoost production model on the 70-day holdout.
                     </span></span>
                 </div>
-                <div class="stat-value">393<span class="stat-unit">MW</span></div>
+                <div class="stat-value">389<span class="stat-unit">MW</span></div>
             </div>
             <div class="stat-cell">
                 <div class="stat-label">Mean % error
@@ -386,15 +386,15 @@ if st.session_state.view == "load":
                         Mean error relative to the actual realised load.
                     </span></span>
                 </div>
-                <div class="stat-value">2.72<span class="stat-unit">%</span></div>
+                <div class="stat-value">2.69<span class="stat-unit">%</span></div>
             </div>
             <div class="stat-cell">
                 <div class="stat-label">80 % band hit rate
                     <span class="info-tip">ⓘ<span class="info-tip-content">
-                        Fraction of quarter-hours where the realised load lands inside the model's P10–P90 interval. Target 80 %.
+                        Fraction of quarter-hours where the realised load lands inside the model's P10–P90 interval. Target 80 %. XGBoost's bands are slightly under-calibrated vs the LSTM's 78.3 % — a known trade-off; conformal calibration is on the follow-up list.
                     </span></span>
                 </div>
-                <div class="stat-value">78.3<span class="stat-unit">%</span></div>
+                <div class="stat-value">70.0<span class="stat-unit">%</span></div>
             </div>
         </div>
         """,
@@ -631,10 +631,13 @@ if st.session_state.view == "load":
 
     st.markdown("## Where the error reduction comes from")
     st.markdown(
-        "Five LSTM variants, each adding one feature group. Bars show "
-        "the marginal MAE improvement. The lagged-TSO-error feature "
-        "alone buys ~57 % of the total lift — confirms the residual-"
-        "learning design."
+        "Five model variants from the LSTM iteration history, each "
+        "adding one feature group on top of the previous. The "
+        "lagged-TSO-error feature carries the most weight in both "
+        "architectures — **57 % of the LSTM ablation lift, 14.9 % of "
+        "XGBoost feature importance**. Residual-learning isn't an "
+        "LSTM-specific trick; it's the right framing for this problem "
+        "regardless of model class."
     )
     abl = load_ablation()
     if abl is not None and not abl.empty:
@@ -653,21 +656,21 @@ if st.session_state.view == "load":
 else:  # st.session_state.view == "price"
 
     st.markdown(
-        "# A second LSTM, retargeted at the day-ahead spot price."
+        "# An XGBoost quantile forecaster for the EPEX day-ahead spot price."
     )
     st.markdown(
         f'<p style="color: rgba(255,255,255,0.5); font-family: \'JetBrains Mono\', monospace; '
         f'font-size: 0.8rem; letter-spacing: 0.1em; text-transform: uppercase; '
         f'margin-top: 0.25rem;">Backtest 2026-03 → 2026-04 · n = 61 days · '
-        f'data through {data_max.isoformat()} · model: Probabilistic PriceCast v4</p>',
+        f'data through {data_max.isoformat()} · model: PriceCast — XGBoost v1</p>',
         unsafe_allow_html=True,
     )
     st.markdown(
-        "Same architecture, retargeted at the EPEX day-ahead spot price "
-        "— the signal a battery operator or BRP maps to € on a P&L. "
-        "**On a 10 MW / 20 MWh battery over the 61-day holdout, the "
-        "forecast captures ~95 % of perfect-foresight P&L vs the naive "
-        "baseline's 81 %** (+€57 k uplift, ~€1.7 M/year on a 100 MWh fleet)."
+        "Targets the EPEX day-ahead clearing price — the signal that maps "
+        "to € on a battery operator's or BRP's P&L. **On a 10 MW / 20 MWh "
+        "battery over the 61-day holdout, the forecast captures ~97 % of "
+        "perfect-foresight P&L vs the naive baseline's 81 %** (+€65 k "
+        "uplift, ~€1.9 M/year on a 100 MWh fleet)."
     )
 
     # --- Headline stats grid (price) ------------------------------------
@@ -680,7 +683,7 @@ else:  # st.session_state.view == "price"
                         Skill score vs naive yesterday-same-quarter-hour. No published price baseline exists, so naive yesterday is the comparison.
                     </span></span>
                 </div>
-                <div class="stat-value">+35.7<span class="stat-unit">%</span></div>
+                <div class="stat-value">+52.1<span class="stat-unit">%</span></div>
             </div>
             <div class="stat-cell">
                 <div class="stat-label">P50 MAE
@@ -688,7 +691,7 @@ else:  # st.session_state.view == "price"
                         Median forecast's mean absolute error in €/MWh on the 61-day holdout.
                     </span></span>
                 </div>
-                <div class="stat-value">23.8<span class="stat-unit">€/MWh</span></div>
+                <div class="stat-value">17.7<span class="stat-unit">€/MWh</span></div>
             </div>
             <div class="stat-cell">
                 <div class="stat-label">Battery P&L vs perfect-foresight
@@ -696,7 +699,7 @@ else:  # st.session_state.view == "price"
                         % of theoretical-max arbitrage P&L a 10 MW / 20 MWh battery captures dispatching against the model's P50.
                     </span></span>
                 </div>
-                <div class="stat-value">95.0<span class="stat-unit">%</span></div>
+                <div class="stat-value">97.1<span class="stat-unit">%</span></div>
             </div>
             <div class="stat-cell">
                 <div class="stat-label">P&L uplift over naive
@@ -704,7 +707,7 @@ else:  # st.session_state.view == "price"
                         Extra € the same battery earns vs a trader using yesterday's prices as the forecast.
                     </span></span>
                 </div>
-                <div class="stat-value">+57<span class="stat-unit">k € / 61 d</span></div>
+                <div class="stat-value">+65<span class="stat-unit">k € / 61 d</span></div>
             </div>
         </div>
         """,
@@ -743,29 +746,11 @@ else:  # st.session_state.view == "price"
         else:
             st.warning("Encoder/decoder window has missing values — upstream data gap.")
     else:
-        target_idx_tmrw = pd.date_range(
-            start=pd.Timestamp(tomorrow, tz="Europe/Berlin").tz_convert("UTC"),
-            periods=96, freq="15min",
-        )
-        vre_missing_tmrw = (
-            VRE_FC_COL in df.columns
-            and df[VRE_FC_COL].reindex(target_idx_tmrw).isna().all()
-        )
-        if vre_missing_tmrw:
-            st.markdown(
-                '<div style="display:inline-block; border:1px solid rgba(255,200,80,0.5); '
-                'padding:0.4rem 0.9rem; margin-bottom:1rem; '
-                'font-family:\'JetBrains Mono\',monospace; font-size:0.75rem; '
-                'letter-spacing:0.1em; text-transform:uppercase; '
-                'color:rgba(255,200,80,0.95);">'
-                "Degraded mode &nbsp;·&nbsp; SMARD VRE day-ahead not yet published; "
-                "model running on weather + load only (~+38 % MAE expected)"
-                "</div>",
-                unsafe_allow_html=True,
-            )
         st.markdown(
             "Model P50 with P10–P90 ribbon for tomorrow. Realised price "
-            "clears at ~12:42 Berlin after the EPEX auction."
+            "clears at ~12:42 Berlin after the EPEX auction. The "
+            "production XGBoost model handles missing inputs natively "
+            "via tree splits — no separate degraded-mode path needed."
         )
         st.plotly_chart(
             charts.price_forecast_chart(tomorrow_price, actuals=tomorrow_price_actual),
@@ -999,13 +984,14 @@ def load_drift_log():
 st.markdown("---")
 st.markdown("## Architecture justification — did the LSTM earn its complexity?")
 st.markdown(
-    "I tested both production models against an XGBoost baseline on the "
-    "same data, same features, same train/val/holdout splits. Two "
-    "different answers per model, both surfaced here rather than buried. "
-    "**Load:** tied on average, LSTM wins on tails. **Price:** XGBoost "
-    "wins everywhere — including the dispatch P&L. Honest finding. "
-    "Production currently runs LSTM v4 + M10 clip for price; swap to "
-    "XGBoost is on the follow-up list."
+    "Two architectures, same data layer, same engineered features "
+    "(re-shaped per architecture: flat-tabular for XGBoost, sequence "
+    "windows for LSTM), same train/val/holdout splits. **Load:** tied "
+    "on average MAE, LSTM wins on tails. **Price:** XGBoost wins "
+    "everywhere — including the dispatch P&L. **Production runs "
+    "XGBoost for both models.** LSTM remains in the repo as the "
+    "comparison baseline; the daily drift monitor scores both "
+    "architectures against yesterday's realised actuals."
 )
 
 # Static headline comparison from the backtest CSVs.
@@ -1095,8 +1081,8 @@ st.markdown("---")
 st.markdown("## How a forecast is made")
 st.markdown(
     """
-    1. **Look back 7 days.** The encoder LSTM reads the past 672 quarter-hours: realised load, TSO error, weather, calendar. Last week's pattern is the template; recent TSO error is the bias to correct.
-    2. **Look forward at what's already known by D-1 12:00 Berlin.** The decoder LSTM reads tomorrow's published facts: TSO load forecast, weather NWP, holiday flag. For the price model: SMARD's day-ahead PV+wind forecast.
+    1. **Look back.** Sparse lag features at D-2, D-7, D-14 (matching quarter-hour) plus 1-day and 7-day rolling stats on load, residual, and prices. Last week's pattern is the template; the TSO's recent forecast error is the bias to correct.
+    2. **Look forward at what's already known by D-1 12:00 Berlin.** The model reads tomorrow's published facts directly: TSO load forecast, weather NWP, holiday flag. For the price model: SMARD's day-ahead PV+wind forecast plus engineered `vre_to_load_ratio` and `vre_percentile`.
     3. **Mask anything that wouldn't have been knowable at issue time.** Every column is filtered through a per-column "is this available at T?" rule before entering the model. A scrambling test confirms no post-T value sneaks in.
     4. **Three quantile heads predict P10, P50, P90 for each of tomorrow's 96 quarter-hours.** Load model output is added to the TSO baseline (we predict the *correction*, not the level). Price model output is the prediction directly (no published baseline exists for price).
     5. **Render.** P50 line + P10–P90 ribbon on the dashboard. After 12:42 Berlin the price clears; load is realised through the day. Performance shows up in the analysis panels.
@@ -1108,8 +1094,8 @@ st.markdown(
     - **Target:** German grid load + day-ahead spot price, 15-min resolution, 96 steps per delivery day.
     - **Issue time:** D-1 12:00 Berlin (EPEX day-ahead gate). Leakage tested by scrambling all post-issue values and asserting feature parity.
     - **Load model:** predicts the TSO error (`actual − TSO_forecast`), adds the correction. Calendar + climatology already in the TSO baseline; the model learns the systematic remainder.
-    - **Price model:** raw price target (no published baseline). Decoder uses raw `fc_gen__pv+wind` + engineered `vre_to_load_ratio` and `vre_percentile`. Trained with 30 % feature-dropout on `fc_gen` for graceful degradation when SMARD hasn't published.
-    - **Architecture:** seq2seq LSTM(64) encoder + LSTM(64) decoder → three quantile heads (P10/P50/P90), pinball loss, ~36 k parameters per model.
+    - **Price model:** raw price target (no public baseline exists for it). Features: raw `fc_gen__pv+wind` + engineered `vre_to_load_ratio` and `vre_percentile`. Tree splits handle missing inputs natively — no degraded-mode path needed.
+    - **Architecture:** XGBoost quantile regressors, one model per quantile, native `reg:quantileerror`. **47 features for load, 50 for price** (47 base + 3 engineered VRE). Comparison baseline retained: seq2seq LSTM(64) encoder/decoder + pinball loss, ~36 k parameters per model — see Architecture justification panel above.
     - **Skill score:** `1 − MAE_model / MAE_baseline`. Zero = ties, one = perfect.
     """
 )

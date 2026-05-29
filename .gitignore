@@ -44,9 +44,12 @@ Thumbs.db
 # Dashboard / notebooks read these at runtime — keep tracked so the deployed
 # app and notebooks render correctly.
 !backtest_results/lstm_weather_step7.csv
+!backtest_results/xgboost_weather_step7.csv
 !backtest_results/ablation_summary.csv
 !backtest_results/price_quantile_holdout.csv
+!backtest_results/xgboost_price_holdout.csv
 !backtest_results/battery_pnl_daily.csv
+!backtest_results/xgboost_battery_pnl_daily.csv
 !backtest_results/drift_log.csv
 !backtest_results/lstm_vs_xgboost_load.csv
 !backtest_results/lstm_vs_xgboost_price.csv

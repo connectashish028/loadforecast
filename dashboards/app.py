@@ -47,9 +47,9 @@ TSO_COL = "fc_cons__grid_load"
 PRICE_COL = "price__germany_luxembourg"
 VRE_FC_COL = "fc_gen__photovoltaics_and_wind"
 ABLATION_CSV = ROOT / "backtest_results" / "ablation_summary.csv"
-WEATHER_BACKTEST_CSV = ROOT / "backtest_results" / "lstm_weather_step7.csv"
-PRICE_HOLDOUT_CSV = ROOT / "backtest_results" / "price_quantile_holdout.csv"
-BATTERY_PNL_CSV = ROOT / "backtest_results" / "battery_pnl_daily.csv"
+WEATHER_BACKTEST_CSV = ROOT / "backtest_results" / "xgboost_weather_step7.csv"
+PRICE_HOLDOUT_CSV = ROOT / "backtest_results" / "xgboost_price_holdout.csv"
+BATTERY_PNL_CSV = ROOT / "backtest_results" / "xgboost_battery_pnl_daily.csv"
 
 # Curated case-study dates — the most narrative-rich days in the holdout.
 NOTABLE_DAYS = [
@@ -955,9 +955,10 @@ else:  # st.session_state.view == "price"
     st.markdown(
         "10 MW / 20 MWh battery, 90 % round-trip, 3 cycles/day. Greedy "
         "dispatch on each day's forecast, realised at actual prices. "
-        "**Model P50 captures 95 % of perfect-foresight vs naive's 81 %** "
-        "— +€57 k over 61 days. P10/P90 underperforms P50 by ~2 pp "
-        "because dispatch is a ranking problem."
+        "**Model P50 captures 96.9 % of perfect-foresight vs naive's 81.3 %** "
+        "— +€65 k over 61 days. P50 and P10/P90 dispatch sit within 0.1 pp "
+        "of each other for XGBoost because the model's rank-ordering of "
+        "slots is consistent across quantiles."
     )
     pnl = load_battery_pnl()
     if pnl is not None and not pnl.empty:

@@ -55,6 +55,8 @@ Thumbs.db
 !backtest_results/xgboost_conformal_summary.csv
 !backtest_results/xgboost_intraday_spike_forecasts.csv
 !backtest_results/xgboost_intraday_spike_summary.csv
+!backtest_results/da_vs_intraday_per_qh.csv
+!backtest_results/da_vs_intraday_daily.csv
 !backtest_results/drift_log.csv
 !backtest_results/lstm_vs_xgboost_load.csv
 !backtest_results/lstm_vs_xgboost_price.csv
@@ -69,6 +71,7 @@ model_checkpoints/*
 !model_checkpoints/price_quantile_v4/
 !model_checkpoints/xgboost_load_v1/
 !model_checkpoints/xgboost_price_v1/
+!model_checkpoints/xgboost_intraday_v1/
 mlruns/
 models/production/
 models/candidates/

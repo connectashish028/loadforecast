@@ -668,9 +668,12 @@ else:  # st.session_state.view == "price"
     st.markdown(
         "Targets the EPEX day-ahead clearing price — the signal that maps "
         "to € on a battery operator's or BRP's P&L. **On a 10 MW / 20 MWh "
-        "battery over the 61-day holdout, the forecast captures ~97 % of "
-        "perfect-foresight P&L vs the naive baseline's 81 %** (+€65 k "
-        "uplift, ~€1.9 M/year on a 100 MWh fleet)."
+        "battery over the 61-day Mar–Apr 2026 holdout, the forecast "
+        "captures ~97 % of perfect-foresight P&L vs the naive baseline's "
+        "81 %** — a **+€65 k uplift**. The dispatch sim is a price-taker "
+        "abstraction (no SoC tracking, no degradation, no market impact); "
+        "annualising and scaling to a larger fleet compounds those, so "
+        "the 61-day number on a 20 MWh asset is the hard read."
     )
 
     # --- Headline stats grid (price) ------------------------------------

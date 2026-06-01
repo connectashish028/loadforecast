@@ -2,7 +2,7 @@
 
 [![Daily refresh](https://github.com/connectashish028/german-day-ahead-forecast/actions/workflows/daily_refresh.yml/badge.svg)](https://github.com/connectashish028/german-day-ahead-forecast/actions/workflows/daily_refresh.yml)
 
-> Production XGBoost quantile forecasters for the German day-ahead market. The **load model** beats the TSO's published forecast by **21 %** across a 14-month holdout. The **price model** captures **97 % of perfect-foresight battery P&L** on a 10 MW / 20 MWh battery (+€65 k uplift over a 61-day holdout, ~€1.9 M/year on a 100 MWh fleet). A seq2seq LSTM is retained as the live comparison baseline; both architectures are scored daily against realised actuals.
+> Production XGBoost quantile forecasters for the German day-ahead market. The **load model** beats the TSO's published forecast by **21 %** across a 14-month holdout. The **price model** captures **97 % of perfect-foresight battery P&L** on a 10 MW / 20 MWh battery — **+€65 k uplift over the 61-day Mar–Apr 2026 holdout** against a naive yesterday baseline. A seq2seq LSTM is retained as the live comparison baseline; both architectures are scored daily against realised actuals.
 
 ### → Live demo: **[german-load-forecast-v1.streamlit.app](https://german-load-forecast-v1.streamlit.app/)**
 
@@ -53,7 +53,7 @@ Four iterations, each tackling a specific failure mode:
 | **v4** | + Engineered `vre_to_load_ratio` / `vre_percentile`; 3× weight on holidays + Sundays; 0.5× weight on 2022–2023 | **+36 % MAE vs naive on average, +60 % on the worst 10 % of days** |
 | v4 + clip | Domain-rule shift on holiday × top-1 % VRE days, calibrated on 2024–2025 (the M10 patch) | May 1, 2026 (−500 €/MWh): MAE 81.8 → 72.8 |
 
-**The headline trading metric: dispatch a 10 MW / 20 MWh battery against the XGBoost P50 forecast on each delivery day. The model captures 97.1 % of perfect-foresight P&L vs the naive baseline's 81.3 %** — a +€65 k uplift over the 61-day holdout, ~€1.9 M/year on a 100 MWh fleet.
+**The headline trading metric: dispatch a 10 MW / 20 MWh battery against the XGBoost P50 forecast on each delivery day. The model captures 96.9 % of perfect-foresight P&L vs the naive baseline's 81.3 %** — a **+€65 k uplift over the 61-day holdout**. The dispatch sim is a deliberate price-taker abstraction — no state-of-charge tracking across days, no cycling-degradation cost, no market-impact penalty. Annualising the spring uplift or scaling linearly to a 100 MWh fleet would compound those abstractions; the honest read is **the 61-day uplift on a 20 MWh asset** with the larger numbers as a price-taker ceiling.
 
 A surprise finding: P50-only dispatch out-performs P10-charge / P90-discharge dispatch by ~2 pp. **Battery dispatch is a ranking problem, not a calibration problem** — what matters is which slots are cheapest, not the absolute spread.
 

@@ -112,6 +112,21 @@ def _build_columns() -> list[Column]:
         fetch_kwargs={"filter_id": 4359, "region": "DE-LU"},
     ))
 
+    # 3b. Intraday continuous average price — SMARD filter 252, DE-LU.
+    # Volume-weighted average of all intraday continuous trades per 15-min
+    # delivery slot. Empirically verified vs day-ahead (filter 4169) on a
+    # multi-day window: correlation 0.977, mean basis -1.15 EUR/MWh,
+    # std 14.23 EUR/MWh -- textbook intraday-vs-DA signature.
+    cols.append(Column(
+        name="price__intraday_continuous_de_lu",
+        source=SRC_SMARD_API,
+        description=(
+            "Intraday continuous average price (volume-weighted), DE-LU, "
+            "EUR/MWh per 15-min delivery slot. SMARD filter 252."
+        ),
+        fetch_kwargs={"filter_id": 252, "region": "DE-LU"},
+    ))
+
     # 4. TSO consumption forecasts via SMARD downloadcenter JSON API.
     for suffix in ("grid_load", "residual_load"):
         cols.append(Column(

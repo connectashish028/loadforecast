@@ -1253,83 +1253,77 @@ else:  # st.session_state.view == "price"
                 "directly.**"
             )
 
-        # --- Intraday re-forecast spike (Phase B.3) ----------------------
-        intra_fc, intra_sum = load_intraday_spike()
-        if intra_fc is not None and intra_sum is not None and not intra_sum.empty:
-            st.markdown("### Intraday re-forecast spike — does cadence help?")
+        # --- DA vs Intraday — same architecture, two markets (Phase B.4) -
+        dvi_daily = (
+            pd.read_csv(ROOT / "backtest_results" / "da_vs_intraday_daily.csv")
+            if (ROOT / "backtest_results" / "da_vs_intraday_daily.csv").exists()
+            else None
+        )
+        if dvi_daily is not None and not dvi_daily.empty:
+            st.markdown("### Same architecture, two markets — DA vs intraday continuous")
             st.markdown(
-                "Phase B.3: the production XGBoost price model is trained at "
-                "a single issue time (D-1 12:00 Berlin). Calling the same "
-                "model at multiple issue times across the day-before-delivery "
-                "window is a proof-of-concept that the feature pipeline + "
-                "leakage tests + drift monitor all extend cleanly to a finer "
-                "cadence — *without retraining or code changes*. "
-                "Code: `scripts/run_intraday_spike.py`."
+                "Phase B.4 ingested German intraday continuous prices (SMARD "
+                "filter 252, volume-weighted average of all continuous "
+                "trades per delivery slot) and retrained an identical "
+                "XGBoost quantile model on the intraday target. Same 50 "
+                "features, same train/val/holdout splits, same sample "
+                "weights, same hyperparameters — only the target column "
+                "changes. Both models scored against the **realised prices "
+                "of their respective markets** on the same 61-day Mar-Apr "
+                "2026 holdout. Code: `scripts/train_xgboost_intraday.py` "
+                "+ `scripts/compare_da_vs_intraday.py`."
             )
 
-            # Pick the delivery day where cadence helped most for the chart
-            sum_loc = intra_sum.copy()
-            sum_loc["delivery_date"] = sum_loc["delivery_date"].astype(str)
-            cad_help = (
-                sum_loc.groupby("delivery_date")["mae_eur"].agg(["first", "last"])
-            )
-            cad_help["improvement"] = cad_help["first"] - cad_help["last"]
-            chart_day = str(cad_help["improvement"].idxmax())
+            da_mae = float(dvi_daily["da_mae_model"].mean())
+            id_mae = float(dvi_daily["id_mae_model"].mean())
+            da_naive_mae = float(dvi_daily["da_mae_naive"].mean())
+            id_naive_mae = float(dvi_daily["id_mae_naive"].mean())
+            da_skill = (1 - da_mae / da_naive_mae) * 100
+            id_skill = (1 - id_mae / id_naive_mae) * 100
+            da_cov = float(dvi_daily["da_coverage"].mean()) * 100
+            id_cov = float(dvi_daily["id_coverage"].mean()) * 100
+            da_oracle = float(dvi_daily["da_oracle_pnl"].sum())
+            da_naive_pnl = float(dvi_daily["da_naive_pnl"].sum())
+            da_model_pnl = float(dvi_daily["da_model_pnl"].sum())
+            id_oracle = float(dvi_daily["id_oracle_pnl"].sum())
+            id_naive_pnl = float(dvi_daily["id_naive_pnl"].sum())
+            id_model_pnl = float(dvi_daily["id_model_pnl"].sum())
 
-            st.markdown(
-                f"Delivery day **{chart_day}** — the cleanest case in the spike. "
-                "Each shade is the same model issued at a different time on "
-                "the day before. The lines move only slightly because the "
-                "production model wasn't trained for intraday cadence — "
-                "what's working is the *infrastructure*."
-            )
-            st.plotly_chart(
-                charts.intraday_spike_chart(intra_fc, chart_day),
-                use_container_width=True,
-                config={"displaylogo": False},
-                key=f"chart_intraday_spike_{chart_day}",
-            )
-
-            # Per-day MAE table across all spike days
             md_lines = [
-                "| Delivery day | D-1 06:00 MAE | D-1 12:00 (gate) | D-1 18:00 | D-1 21:00 | Naive MAE |",
-                "|---|---|---|---|---|---|",
+                "| Metric | Day-ahead model on DA | Intraday model on ID |",
+                "|---|---|---|",
+                f"| P50 MAE | {da_mae:.2f} €/MWh | {id_mae:.2f} €/MWh |",
+                f"| Naive P50 MAE | {da_naive_mae:.2f} €/MWh | {id_naive_mae:.2f} €/MWh |",
+                f"| **Skill vs naive** | **+{da_skill:.1f} %** | **+{id_skill:.1f} %** |",
+                f"| 80%-band coverage | {da_cov:.1f} % | {id_cov:.1f} % |",
+                f"| Perfect-foresight P&L | €{da_oracle:,.0f} | €{id_oracle:,.0f} |",
+                f"| Naive dispatch P&L | €{da_naive_pnl:,.0f} | €{id_naive_pnl:,.0f} |",
+                f"| **Model P50 P&L** | **€{da_model_pnl:,.0f} ({da_model_pnl/da_oracle*100:.1f} %)** | **€{id_model_pnl:,.0f} ({id_model_pnl/id_oracle*100:.1f} %)** |",
+                f"| **Uplift vs naive** | **€{da_model_pnl - da_naive_pnl:+,.0f}** | **€{id_model_pnl - id_naive_pnl:+,.0f}** |",
             ]
-            for d, g in sum_loc.groupby("delivery_date"):
-                pivot = g.set_index("issue_label")["mae_eur"]
-                naive = float(g["naive_mae_eur"].iloc[0])
-                cells = [
-                    f"{pivot.get('D-1 06:00', float('nan')):.2f}",
-                    f"{pivot.get('D-1 12:00 (gate)', float('nan')):.2f}",
-                    f"{pivot.get('D-1 18:00', float('nan')):.2f}",
-                    f"{pivot.get('D-1 21:00', float('nan')):.2f}",
-                ]
-                md_lines.append(f"| {d} | {cells[0]} | {cells[1]} | {cells[2]} | {cells[3]} | {naive:.2f} |")
             st.markdown("\n".join(md_lines))
-
             st.markdown(
-                "**The third honest finding:** *the infrastructure extends, "
-                "but the model doesn't yet extract much value from the "
-                "cadence.* Across five delivery days the MAE shifts by less "
-                "than 1 €/MWh between earliest and latest issue, and "
-                "occasionally gets slightly worse at later issues — "
-                "consistent with the model's training distribution being "
-                "a single D-1 12:00 issue. The features that *should* "
-                "carry intraday signal — the latest NWP cycle that landed "
-                "at 18:00 UTC, recent imbalance signals, intraday-auction "
-                "prints from the morning — aren't part of the current "
-                "feature set."
+                "**The Phase B positive.** After three honest negatives "
+                "(B.1 risk-aware, B.2 conformal, B.3 cadence), this is the "
+                "experiment that yields a working forecast for a different "
+                "German power market. The intraday model loses slightly on "
+                "absolute % of perfect-foresight (94.4 % vs 96.9 %) but "
+                "**adds slightly more €-uplift over its naive baseline** "
+                "(+€67 k vs +€65 k) — because intraday-yesterday is a "
+                "weaker baseline than DA-yesterday. Same machinery, "
+                "different market, comparable result."
             )
             st.markdown(
-                "**What a production intraday model would add:** (1) "
-                "training windows sampled at multiple issue times, so the "
-                "model learns to weight late-arriving features; (2) "
-                "intraday-specific features (NWP-update recency, recent "
-                "imbalance flow, intraday-auction prints); (3) a finer "
-                "re-issue cron — every 15-60 min — backed by the same "
-                "drift monitor + dispatch translation already in this "
-                "repo. The spike proves the surrounding machinery; the "
-                "model retrain is the named next milestone."
+                "**What this rules in.** A trader running a battery against "
+                "both books could now dispatch on EITHER forecast — the "
+                "infrastructure produces both, the drift monitor would "
+                "score both, the dispatch sim runs both. **What it still "
+                "doesn't model:** intraday CONTINUOUS re-trading within "
+                "delivery day D (we forecast the avg intraday price once at "
+                "D-1 12:00, not as new trades print on D); ID1/ID3 hour-/"
+                "three-hour rolling indices; and the FCR/aFRR/mFRR "
+                "ancillary stack. Those are clean follow-ons that re-use "
+                "this same pipeline."
             )
 
 
@@ -1466,25 +1460,28 @@ st.markdown(
 st.markdown("## Scope and boundaries")
 st.markdown(
     """
-    A focused day-ahead forecasting + dispatch artifact. The boundaries
-    are deliberate; naming them is part of the read.
+    The artifact now models two German power markets with the same
+    pipeline. The boundaries are deliberate; naming them is part of
+    the read.
 
-    - **Markets in scope:** EPEX day-ahead spot only (the 12:00 Berlin auction). Continuous intraday and balancing / imbalance markets are not modeled. The same machinery — feature pipeline, quantile heads, leakage tests, drift monitor — extends naturally to intraday with a finer re-issue cadence and intraday-specific features (NWP updates landing through the day, recent imbalance signals).
-    - **Dispatch policy:** greedy P50 ranking, recomputed independently each delivery day. No state-of-charge tracking across days, no cycling-degradation cost, no market-impact penalty — the battery is a price-taker. Risk-aware position sizing (quantile-weighted slot selection, worst-day cap) is the named next milestone.
-    - **Forecasting cadence:** single issue at D-1 12:00 Berlin. No intraday re-forecast as new NWP arrives.
-    - **Revenue stack:** energy arbitrage only. FCR / aFRR / mFRR (capacity + activation) typically make up the majority of a German BESS revenue stack and are not modeled here.
+    - **Markets in scope:** EPEX day-ahead spot (production) **and** German intraday continuous average (parallel checkpoint after Phase B.4). Both are forecast at D-1 12:00 Berlin issue time, both are scored daily against realised actuals. The intraday model captures **94.4 %** of perfect-foresight dispatch P&L on the 61-day Mar-Apr 2026 holdout with **+€67 k uplift vs naive intraday-yesterday**.
+    - **Dispatch policy:** greedy P50 ranking, recomputed independently each delivery day. No state-of-charge tracking across days, no cycling-degradation cost, no market-impact penalty — the battery is a price-taker. Risk-aware position sizing (B.1) was tested and didn't beat greedy on miscalibrated bands; the named next milestone is ensemble-based uncertainty.
+    - **Forecasting cadence:** single issue at D-1 12:00 Berlin for both markets. Continuous intraday RE-TRADING within delivery day D (the truly time-sensitive product) is NOT modeled — that's a finer-cadence product than this pipeline's single-issue cron.
+    - **Revenue stack:** energy arbitrage on DA + intraday continuous. FCR / aFRR / mFRR (capacity + activation) typically make up the majority of a German BESS revenue stack and are not modeled here. Same pipeline + drift monitor extends to them — one quantile model per product.
     """
 )
 st.markdown("## What's next")
 st.markdown(
     """
-    Three named extensions, in order. Each uses the existing
-    infrastructure (feature pipeline, quantile heads, leakage tests,
-    drift monitor) — the increment is policy and cadence, not a rewrite.
+    Three named extensions. The first two are direct follow-ons from
+    Phase B's diagnoses (B.1 found risk-aware needs better uncertainty
+    signal; B.4 found intraday-continuous-average forecasts work but
+    don't capture intraday re-trading dynamics). Each uses the existing
+    infrastructure — the increment is target, policy, or cadence.
 
-    1. **Risk-aware dispatch (Phase B, in progress).** Replace greedy P50 with quantile-weighted slot selection and a worst-day cap. Trade a small slice of average uplift for a materially smaller tail. The Downside / risk strip on the price view is the baseline this would improve against.
-    2. **Intraday re-forecast spike.** Parameterise the feature builder on issue time T and re-issue the price model at T-12h, T-4h, T-0 as new NWP cycles land. A single delivery day proof-of-concept is ~1-2 weeks; the operational version is the next milestone after that.
-    3. **Ancillary capacity / activation forecasts.** FCR / aFRR / mFRR each have their own clearing mechanics — one quantile model per product, scored against the public capacity-auction results. Same drift monitor, same dispatch translation, multi-product revenue stack.
+    1. **Ensemble-based uncertainty for risk-aware dispatch.** Train 3-5 XGBoost models with different random seeds; use disagreement on slot ranking as the dispatch confidence signal. Tests the B.2 diagnosis that *rank-ordering uncertainty* is the missing ingredient. If it works, plug into the width-penalty policy from B.1.
+    2. **Ancillary capacity / activation forecasts.** FCR / aFRR / mFRR each have their own clearing mechanics — one quantile model per product, scored against the public capacity-auction results. Same drift monitor, same dispatch translation. The intraday model retraining in B.4 proved the pipeline-as-a-template approach; ancillary is the same pattern.
+    3. **Intraday continuous re-forecasting within delivery day D.** The B.4 intraday model issues once at D-1 12:00 and forecasts the *avg* intraday price for D. A real intraday-continuous product would re-forecast at H-15min for each remaining quarter-hour as fresh trades print. Different cadence, different feature mix (NWP-update recency, recent imbalance flow, intraday-auction prints).
     """
 )
 st.markdown(

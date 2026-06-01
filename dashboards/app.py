@@ -1192,6 +1192,18 @@ st.markdown(
     - **Revenue stack:** energy arbitrage only. FCR / aFRR / mFRR (capacity + activation) typically make up the majority of a German BESS revenue stack and are not modeled here.
     """
 )
+st.markdown("## What's next")
+st.markdown(
+    """
+    Three named extensions, in order. Each uses the existing
+    infrastructure (feature pipeline, quantile heads, leakage tests,
+    drift monitor) — the increment is policy and cadence, not a rewrite.
+
+    1. **Risk-aware dispatch (Phase B, in progress).** Replace greedy P50 with quantile-weighted slot selection and a worst-day cap. Trade a small slice of average uplift for a materially smaller tail. The Downside / risk strip on the price view is the baseline this would improve against.
+    2. **Intraday re-forecast spike.** Parameterise the feature builder on issue time T and re-issue the price model at T-12h, T-4h, T-0 as new NWP cycles land. A single delivery day proof-of-concept is ~1-2 weeks; the operational version is the next milestone after that.
+    3. **Ancillary capacity / activation forecasts.** FCR / aFRR / mFRR each have their own clearing mechanics — one quantile model per product, scored against the public capacity-auction results. Same drift monitor, same dispatch translation, multi-product revenue stack.
+    """
+)
 st.markdown(
     f"""
     <div style="display: flex; gap: 1rem; margin-top: 1.5rem;

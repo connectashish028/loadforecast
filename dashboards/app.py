@@ -50,6 +50,7 @@ ABLATION_CSV = ROOT / "backtest_results" / "ablation_summary.csv"
 WEATHER_BACKTEST_CSV = ROOT / "backtest_results" / "xgboost_weather_step7.csv"
 PRICE_HOLDOUT_CSV = ROOT / "backtest_results" / "xgboost_price_holdout.csv"
 BATTERY_PNL_CSV = ROOT / "backtest_results" / "xgboost_battery_pnl_daily.csv"
+RISK_POLICIES_CSV = ROOT / "backtest_results" / "xgboost_battery_pnl_policies.csv"
 
 # Curated case-study dates — the most narrative-rich days in the holdout.
 NOTABLE_DAYS = [
@@ -276,6 +277,13 @@ def load_battery_pnl() -> pd.DataFrame | None:
     if not BATTERY_PNL_CSV.exists():
         return None
     return pd.read_csv(BATTERY_PNL_CSV, parse_dates=["issue_date"])
+
+
+@st.cache_data
+def load_risk_policies() -> pd.DataFrame | None:
+    if not RISK_POLICIES_CSV.exists():
+        return None
+    return pd.read_csv(RISK_POLICIES_CSV, parse_dates=["issue_date"])
 
 
 # --- View state ---------------------------------------------------------
@@ -1048,6 +1056,60 @@ else:  # st.session_state.view == "price"
             f"on average over the worst tail**. The model's wins are bigger "
             f"and more frequent; the worst single day is bounded."
         )
+
+        # --- Risk-aware policy comparison (Phase B.1) --------------------
+        rp = load_risk_policies()
+        if rp is not None and not rp.empty:
+            st.markdown("### Risk-aware dispatch — what works and what doesn't")
+            st.markdown(
+                "Phase B.1 attempt: replace greedy P50 with band-aware "
+                "policies that should improve the worst-day tail. Five "
+                "variants on the same 61-day holdout."
+            )
+            naive_total = float(rp["naive_pnl"].sum())
+            oracle_total = float(rp["oracle_pnl"].sum())
+            POLICY_DESC = [
+                ("greedy_p50",      "Greedy P50",                 "baseline · charge=discharge=P50"),
+                ("p10p90",          "P10 charge / P90 discharge", "optimistic — use bands as low/high estimates"),
+                ("robust_p90p10",   "Robust P90/P10",             "worst-case — buy at P90, sell at P10"),
+                ("width_penalty",   "Width penalty (λ=0.1)",      "P50 ± 0.1·(P90−P10) — soft penalty on wide bands"),
+                ("skip_wide_slots", "Skip top-20 % widest slots", "hard mask · drop most uncertain quarter-hours"),
+            ]
+            md_lines = [
+                "| Policy | What it does | Total P&L | % perfect-foresight | Uplift vs naive | Worst day vs naive | Days naive won |",
+                "|---|---|---|---|---|---|---|",
+            ]
+            for col_name, label, desc in POLICY_DESC:
+                col = f"pnl_{col_name}"
+                if col not in rp.columns:
+                    continue
+                total = float(rp[col].sum())
+                pct = total / oracle_total * 100
+                uplift = total - naive_total
+                daily_uplift = rp[col] - rp["naive_pnl"]
+                worst = float(daily_uplift.min())
+                lost = int((daily_uplift < 0).sum())
+                md_lines.append(
+                    f"| **{label}** | {desc} | €{total:,.0f} | {pct:.1f} % | "
+                    f"€{uplift:+,.0f} | €{worst:+,.0f} | {lost}/{len(rp)} |"
+                )
+            st.markdown("\n".join(md_lines))
+            st.markdown(
+                "**Honest finding:** *none of the four band-aware policies "
+                "beat greedy P50 on this holdout.* Two reasons: (1) the "
+                "quantile bands have ~71 % coverage vs the 80 % nominal — "
+                "**miscalibrated**, so any band-aware policy operates on "
+                "noisy uncertainty signal; (2) **uncertainty correlates "
+                "with opportunity** — the model's wide-band slots are "
+                "often its high-spread arbitrage opportunities, so "
+                "skipping them costs upside without saving the tail. "
+                "The gating step before risk-aware dispatch can outperform "
+                "is **conformal band calibration** — re-rank slots once "
+                "bands are calibrated, revisit the experiment then. "
+                "*This is a deliberate negative result; the script "
+                "(`scripts/run_risk_aware_dispatch.py`) is in the repo "
+                "so the experiment is reproducible.*"
+            )
 
 
 # --- Architecture justification (shared, appears on both views) ---------

@@ -50,6 +50,7 @@ Thumbs.db
 !backtest_results/xgboost_price_holdout.csv
 !backtest_results/battery_pnl_daily.csv
 !backtest_results/xgboost_battery_pnl_daily.csv
+!backtest_results/xgboost_battery_pnl_policies.csv
 !backtest_results/drift_log.csv
 !backtest_results/lstm_vs_xgboost_load.csv
 !backtest_results/lstm_vs_xgboost_price.csv

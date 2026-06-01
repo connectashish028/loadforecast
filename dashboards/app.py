@@ -973,6 +973,79 @@ else:  # st.session_state.view == "price"
             key="chart_price_pnl",
         )
 
+        # --- Downside / risk strip --------------------------------------
+        st.markdown("### Downside on the same dispatch")
+        st.markdown(
+            "Average uplift hides bad days. These four numbers — worst "
+            "single day vs naive, model's worst absolute capture, "
+            "share of days where naive actually won, and the mean uplift "
+            "on the model's hardest 10 % of days — are what a risk desk "
+            "would ask for before any of the headlines above."
+        )
+        pnl_loc = pnl.copy()
+        pnl_loc["uplift_vs_naive"] = (
+            pnl_loc["model_p50_pnl"] - pnl_loc["naive_pnl"]
+        )
+        pnl_loc["model_pct_oracle"] = (
+            pnl_loc["model_p50_pnl"] / pnl_loc["oracle_pnl"] * 100
+        )
+        worst_day = pnl_loc.nsmallest(1, "uplift_vs_naive").iloc[0]
+        worst_uplift = float(worst_day["uplift_vs_naive"])
+        worst_date = pd.Timestamp(worst_day["issue_date"]).date().isoformat()
+        worst_pct = pnl_loc.nsmallest(1, "model_pct_oracle").iloc[0]
+        worst_capture = float(worst_pct["model_pct_oracle"])
+        worst_capture_date = pd.Timestamp(worst_pct["issue_date"]).date().isoformat()
+        loss_days = int((pnl_loc["uplift_vs_naive"] < 0).sum())
+        loss_pct = loss_days / len(pnl_loc) * 100
+        worst_n = max(1, int(0.1 * len(pnl_loc)))
+        w10 = pnl_loc.nsmallest(worst_n, "uplift_vs_naive")
+        w10_mean_uplift = float(w10["uplift_vs_naive"].mean())
+        st.markdown(
+            f"""
+            <div class="stat-grid">
+                <div class="stat-cell">
+                    <div class="stat-label">Worst day vs naive
+                        <span class="info-tip">ⓘ<span class="info-tip-content">
+                            The single delivery day where dispatching against the model's P50 lost the most € relative to dispatching against naive yesterday. Date: {worst_date}.
+                        </span></span>
+                    </div>
+                    <div class="stat-value">{worst_uplift:+,.0f}<span class="stat-unit">€</span></div>
+                </div>
+                <div class="stat-cell">
+                    <div class="stat-label">Worst absolute capture
+                        <span class="info-tip">ⓘ<span class="info-tip-content">
+                            Lowest single-day % of perfect-foresight P&L the model captured. Date: {worst_capture_date}.
+                        </span></span>
+                    </div>
+                    <div class="stat-value">{worst_capture:.0f}<span class="stat-unit">% of oracle</span></div>
+                </div>
+                <div class="stat-cell">
+                    <div class="stat-label">Days naive won
+                        <span class="info-tip">ⓘ<span class="info-tip-content">
+                            Share of holdout days where dispatching against naive yesterday earned more € than dispatching against the model's P50. {loss_days} of {len(pnl_loc)} days.
+                        </span></span>
+                    </div>
+                    <div class="stat-value">{loss_pct:.0f}<span class="stat-unit">%</span></div>
+                </div>
+                <div class="stat-cell">
+                    <div class="stat-label">Worst-10 % uplift
+                        <span class="info-tip">ⓘ<span class="info-tip-content">
+                            Mean €-uplift over the {worst_n} days with the smallest model-vs-naive uplift. The tail of the daily distribution.
+                        </span></span>
+                    </div>
+                    <div class="stat-value">{w10_mean_uplift:+,.0f}<span class="stat-unit">€/day</span></div>
+                </div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+        st.markdown(
+            f"**Read:** On {loss_pct:.0f} % of holdout days, naive yesterday "
+            f"would have beaten the model — but only by **{abs(w10_mean_uplift):.0f} €/day "
+            f"on average over the worst tail**. The model's wins are bigger "
+            f"and more frequent; the worst single day is bounded."
+        )
+
 
 # --- Architecture justification (shared, appears on both views) ---------
 

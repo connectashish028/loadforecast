@@ -51,6 +51,8 @@ WEATHER_BACKTEST_CSV = ROOT / "backtest_results" / "xgboost_weather_step7.csv"
 PRICE_HOLDOUT_CSV = ROOT / "backtest_results" / "xgboost_price_holdout.csv"
 BATTERY_PNL_CSV = ROOT / "backtest_results" / "xgboost_battery_pnl_daily.csv"
 RISK_POLICIES_CSV = ROOT / "backtest_results" / "xgboost_battery_pnl_policies.csv"
+CONFORMAL_POLICIES_CSV = ROOT / "backtest_results" / "xgboost_conformal_policies.csv"
+CONFORMAL_SUMMARY_CSV = ROOT / "backtest_results" / "xgboost_conformal_summary.csv"
 
 # Curated case-study dates — the most narrative-rich days in the holdout.
 NOTABLE_DAYS = [
@@ -284,6 +286,16 @@ def load_risk_policies() -> pd.DataFrame | None:
     if not RISK_POLICIES_CSV.exists():
         return None
     return pd.read_csv(RISK_POLICIES_CSV, parse_dates=["issue_date"])
+
+
+@st.cache_data
+def load_conformal() -> tuple[pd.DataFrame | None, pd.DataFrame | None]:
+    if not (CONFORMAL_POLICIES_CSV.exists() and CONFORMAL_SUMMARY_CSV.exists()):
+        return None, None
+    return (
+        pd.read_csv(CONFORMAL_POLICIES_CSV),
+        pd.read_csv(CONFORMAL_SUMMARY_CSV),
+    )
 
 
 # --- View state ---------------------------------------------------------
@@ -1108,7 +1120,123 @@ else:  # st.session_state.view == "price"
                 "bands are calibrated, revisit the experiment then. "
                 "*This is a deliberate negative result; the script "
                 "(`scripts/run_risk_aware_dispatch.py`) is in the repo "
-                "so the experiment is reproducible.*"
+                "so the experiment is reproducible.* "
+                "**Phase B.2 below tests the conformal-calibration "
+                "hypothesis directly.**"
+            )
+
+        # --- Conformal calibration (Phase B.2) ---------------------------
+        cf_pol, cf_sum = load_conformal()
+        if cf_pol is not None and cf_sum is not None:
+            sd = dict(zip(cf_sum["metric"], cf_sum["value"], strict=True))
+            cal_days = int(sd["cal_days"])
+            test_days = int(sd["test_days"])
+            cov_pre = float(sd["test_coverage_uncalibrated"]) * 100
+            cov_marg = float(sd["test_coverage_marginal"]) * 100
+            cov_adapt = float(sd["test_coverage_adaptive"]) * 100
+            q_marg = float(sd["marginal_q_hat_eur"])
+            q_adapt = float(sd["adaptive_q_hat_mult"])
+
+            st.markdown("### Conformal band calibration — and what it does (and doesn't) unblock")
+            st.markdown(
+                f"**Setup:** split-conformal calibration on the same 61-day "
+                f"holdout. First **{cal_days} days** = calibration set; "
+                f"remaining **{test_days} days** = test set. Two variants: "
+                f"**marginal** (single scalar shift, q̂ = €{q_marg:.2f}/MWh) "
+                f"and **adaptive** (per-slot multiplier on band width, "
+                f"q̂ = {q_adapt:.3f}). Code: `src/loadforecast/conformal.py`, "
+                f"runner: `scripts/run_conformal_calibration.py`."
+            )
+
+            # Coverage tile triplet (the clear win)
+            st.markdown(
+                f"""
+                <div class="stat-grid" style="grid-template-columns: repeat(3, 1fr);">
+                    <div class="stat-cell">
+                        <div class="stat-label">Uncalibrated band coverage
+                            <span class="info-tip">ⓘ<span class="info-tip-content">
+                                P10–P90 80 %-band coverage on the {test_days}-day test split. Nominal target 80 %.
+                            </span></span>
+                        </div>
+                        <div class="stat-value">{cov_pre:.1f}<span class="stat-unit">%</span></div>
+                    </div>
+                    <div class="stat-cell">
+                        <div class="stat-label">Marginal-calibrated
+                            <span class="info-tip">ⓘ<span class="info-tip-content">
+                                Same bands widened uniformly by ±€{q_marg:.2f}/MWh based on calibration-set residuals.
+                            </span></span>
+                        </div>
+                        <div class="stat-value">{cov_marg:.1f}<span class="stat-unit">%</span></div>
+                    </div>
+                    <div class="stat-cell">
+                        <div class="stat-label">Adaptive-calibrated
+                            <span class="info-tip">ⓘ<span class="info-tip-content">
+                                Bands widened proportionally to per-slot width by a factor of {q_adapt:.3f} (CQR-style).
+                            </span></span>
+                        </div>
+                        <div class="stat-value">{cov_adapt:.1f}<span class="stat-unit">%</span></div>
+                    </div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+
+            # Dispatch comparison across (bands × policies). Pivot to a
+            # clean Greedy / P10P90 / WidthPenalty triplet — the three
+            # most readable policies, indexed by band variant.
+            cf_pivot = cf_pol.pivot(
+                index="bands", columns="policy", values="total_pnl",
+            ).reindex(["uncalibrated", "marginal", "adaptive"])
+            uplift_pivot = cf_pol.pivot(
+                index="bands", columns="policy", values="uplift_vs_naive",
+            ).reindex(["uncalibrated", "marginal", "adaptive"])
+            worst_pivot = cf_pol.pivot(
+                index="bands", columns="policy", values="worst_day_vs_naive",
+            ).reindex(["uncalibrated", "marginal", "adaptive"])
+
+            md_lines = [
+                "| Bands | Greedy P50 uplift | P10/P90 uplift | Width-penalty uplift | Greedy worst day | P10/P90 worst day |",
+                "|---|---|---|---|---|---|",
+            ]
+            for band in ["uncalibrated", "marginal", "adaptive"]:
+                if band in uplift_pivot.index:
+                    md_lines.append(
+                        f"| **{band}** | "
+                        f"€{uplift_pivot.loc[band, 'greedy_p50']:+,.0f} | "
+                        f"€{uplift_pivot.loc[band, 'p10p90']:+,.0f} | "
+                        f"€{uplift_pivot.loc[band, 'width_penalty']:+,.0f} | "
+                        f"€{worst_pivot.loc[band, 'greedy_p50']:+,.0f} | "
+                        f"€{worst_pivot.loc[band, 'p10p90']:+,.0f} |"
+                    )
+            st.markdown("\n".join(md_lines))
+
+            st.markdown(
+                "**Two-layer honest result:** "
+                f"(1) **Conformal works** — coverage moves from "
+                f"{cov_pre:.1f} % to {cov_marg:.1f} % (marginal) / "
+                f"{cov_adapt:.1f} % (adaptive) on the test split. The "
+                f"finite-sample guarantee is real. "
+                "(2) **But dispatch P&L is invariant to marginal "
+                "calibration** — every cell in the marginal row matches "
+                "the uncalibrated row exactly. Mathematically expected: "
+                "a uniform shift of every band by ±q̂ doesn't change the "
+                "*rank ordering* of slots, and all five dispatch policies "
+                "depend only on relative rank. Adaptive calibration changes "
+                "rank ordering slightly but shifts probability mass away "
+                "from the best policy (greedy P50)."
+            )
+            st.markdown(
+                "**Diagnosis:** the bottleneck isn't band miscalibration. "
+                "It's that the model's per-slot uncertainty (even after "
+                "calibration) doesn't differentiate *which day's slot "
+                "ranking is reliable* from *which day's isn't*. **Slot "
+                "ordering matters more than slot uncertainty quantification** "
+                "for greedy day-ahead dispatch. "
+                "The next research direction is either ensemble-based "
+                "uncertainty (multiple models — disagreement on rank "
+                "ordering is the signal) or moving past day-ahead to "
+                "intraday markets where forecast updates between issue "
+                "times make uncertainty meaningfully decision-relevant."
             )
 
 

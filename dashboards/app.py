@@ -1177,6 +1177,18 @@ st.markdown(
     - **Skill score:** `1 − MAE_model / MAE_baseline`. Zero = ties, one = perfect.
     """
 )
+st.markdown("## Scope and boundaries")
+st.markdown(
+    """
+    A focused day-ahead forecasting + dispatch artifact. The boundaries
+    are deliberate; naming them is part of the read.
+
+    - **Markets in scope:** EPEX day-ahead spot only (the 12:00 Berlin auction). Continuous intraday and balancing / imbalance markets are not modeled. The same machinery — feature pipeline, quantile heads, leakage tests, drift monitor — extends naturally to intraday with a finer re-issue cadence and intraday-specific features (NWP updates landing through the day, recent imbalance signals).
+    - **Dispatch policy:** greedy P50 ranking, recomputed independently each delivery day. No state-of-charge tracking across days, no cycling-degradation cost, no market-impact penalty — the battery is a price-taker. Risk-aware position sizing (quantile-weighted slot selection, worst-day cap) is the named next milestone.
+    - **Forecasting cadence:** single issue at D-1 12:00 Berlin. No intraday re-forecast as new NWP arrives.
+    - **Revenue stack:** energy arbitrage only. FCR / aFRR / mFRR (capacity + activation) typically make up the majority of a German BESS revenue stack and are not modeled here.
+    """
+)
 st.markdown(
     f"""
     <div style="display: flex; gap: 1rem; margin-top: 1.5rem;

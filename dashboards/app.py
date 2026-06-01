@@ -962,7 +962,10 @@ else:  # st.session_state.view == "price"
         "**Model P50 captures 96.9 % of perfect-foresight vs naive's 81.3 %** "
         "— +€65 k over 61 days. P50 and P10/P90 dispatch sit within 0.1 pp "
         "of each other for XGBoost because the model's rank-ordering of "
-        "slots is consistent across quantiles."
+        "slots is consistent across quantiles. "
+        "*Energy arbitrage on the day-ahead auction only — FCR / aFRR / "
+        "intraday make up the rest of a German BESS's revenue stack and "
+        "are not modeled here. See the Scope and boundaries section below.*"
     )
     pnl = load_battery_pnl()
     if pnl is not None and not pnl.empty:

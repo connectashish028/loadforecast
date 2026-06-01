@@ -99,6 +99,15 @@ A **GitHub Action** runs the refresh + smoke-check + drift monitor + tomorrow-PN
 - **Self-refreshing data layer.** SMARD and Open-Meteo expose authentication-free APIs. One CLI command rebuilds the parquet; a GitHub Action runs it daily at 09:00 UTC, smoke-checks both models, scores both architectures via the drift monitor, and commits the refreshed artifacts back.
 - **Leakage tested.** A "corrupt-future" test scrambles every post-issue value in the source data and asserts the resulting features are byte-identical. 24/24 leakage tests pass.
 
+## Scope and boundaries
+
+The artifact is intentionally focused. Naming what it does not model is part of the read:
+
+- **Markets in scope:** EPEX day-ahead spot only. Continuous intraday and balancing / imbalance markets are not modeled. The same machinery (feature pipeline, quantile heads, leakage tests, drift monitor) extends to intraday with a finer re-issue cadence and intraday-specific features (NWP updates landing through the day, recent imbalance signals).
+- **Dispatch policy:** greedy P50 ranking, recomputed independently each delivery day. No state-of-charge tracking across days, no cycling-degradation cost, no market-impact penalty — the battery is treated as a price-taker. Risk-aware position sizing (quantile-weighted slot selection, worst-day cap) is the named next milestone.
+- **Forecasting cadence:** single issue at D-1 12:00 Berlin. No intraday re-forecast as new NWP arrives.
+- **Revenue stack:** energy arbitrage only. FCR / aFRR / mFRR (capacity + activation) typically dominate a German BESS's actual revenue and are not modeled here.
+
 ## Repo layout
 
 ```

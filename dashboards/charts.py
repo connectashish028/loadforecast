@@ -593,9 +593,67 @@ def architecture_drift_chart(drift_log, model: str, title: str | None = None) ->
     return fig
 
 
+def intraday_spike_chart(
+    forecasts: pd.DataFrame,
+    delivery_date,
+    title: str | None = None,
+) -> go.Figure:
+    """Plot the price model's P50 at multiple issue times for one delivery day,
+    plus the realised price. `forecasts` is the wide xgboost_intraday_spike
+    output, filtered or unfiltered.
+
+    Cadence is conveyed by colour intensity — earliest issue is faded, latest
+    is bold — so the eye reads "as time progresses, the forecast firms up."
+    """
+    fig = go.Figure()
+    fig.add_hline(y=0, line=dict(color=TEXT_30, width=1, dash="dot"))
+
+    df_day = forecasts[forecasts["delivery_date"] == str(delivery_date)].copy()
+    df_day["target_ts"] = pd.to_datetime(df_day["target_ts"], utc=True)
+    df_day = df_day.sort_values(["issue_label", "target_ts"])
+
+    # Cadence shades — light → dark as issue moves later. All in the lilac
+    # PREDICTION hue so the theme stays consistent.
+    SHADES = {
+        "D-1 06:00":         ("#dac6ff", 1.4),
+        "D-1 12:00 (gate)":  ("#b8a1ff", 2.2),
+        "D-1 18:00":         ("#8c6dff", 1.6),
+        "D-1 21:00":         ("#6537d6", 1.8),
+    }
+    for label, group in df_day.groupby("issue_label"):
+        color, width = SHADES.get(label, (PREDICTION, 1.6))
+        x = group["target_ts"].dt.tz_convert("Europe/Berlin")
+        fig.add_trace(go.Scatter(
+            x=x, y=group["p50"], mode="lines",
+            line=dict(color=color, width=width),
+            name=f"Forecast P50 · {label}",
+            hovertemplate=f"%{{y:,.1f}} €/MWh<extra>{label}</extra>",
+        ))
+
+    # Realised price — same series for every issue, just take from the first
+    # group with non-null values.
+    first = df_day.drop_duplicates("target_ts")[["target_ts", "y_true"]].dropna()
+    if not first.empty:
+        x_act = first["target_ts"].dt.tz_convert("Europe/Berlin")
+        fig.add_trace(go.Scatter(
+            x=x_act, y=first["y_true"], mode="lines",
+            line=dict(color=ACTUAL, width=2.4),
+            name="Actual price",
+            hovertemplate="%{y:,.1f} €/MWh<extra>Actual</extra>",
+        ))
+
+    layout = _base_layout(title=title, height=380)
+    layout["yaxis"] = {**_AXIS, "title": "Day-ahead price (€/MWh)"}
+    layout["xaxis"] = {**_AXIS, "title": "Time (Berlin)"}
+    layout["hovermode"] = "x unified"
+    fig.update_layout(**layout)
+    return fig
+
+
 __all__ = ["architecture_drift_chart",
            "forecast_chart", "skill_chart", "error_chart",
            "ablation_chart", "hour_profile_chart",
+           "intraday_spike_chart",
            "price_forecast_chart",
            "price_hour_profile_chart",
            "price_pnl_chart",

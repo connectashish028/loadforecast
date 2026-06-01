@@ -53,6 +53,8 @@ BATTERY_PNL_CSV = ROOT / "backtest_results" / "xgboost_battery_pnl_daily.csv"
 RISK_POLICIES_CSV = ROOT / "backtest_results" / "xgboost_battery_pnl_policies.csv"
 CONFORMAL_POLICIES_CSV = ROOT / "backtest_results" / "xgboost_conformal_policies.csv"
 CONFORMAL_SUMMARY_CSV = ROOT / "backtest_results" / "xgboost_conformal_summary.csv"
+INTRADAY_FORECASTS_CSV = ROOT / "backtest_results" / "xgboost_intraday_spike_forecasts.csv"
+INTRADAY_SUMMARY_CSV = ROOT / "backtest_results" / "xgboost_intraday_spike_summary.csv"
 
 # Curated case-study dates — the most narrative-rich days in the holdout.
 NOTABLE_DAYS = [
@@ -296,6 +298,16 @@ def load_conformal() -> tuple[pd.DataFrame | None, pd.DataFrame | None]:
         pd.read_csv(CONFORMAL_POLICIES_CSV),
         pd.read_csv(CONFORMAL_SUMMARY_CSV),
     )
+
+
+@st.cache_data
+def load_intraday_spike() -> tuple[pd.DataFrame | None, pd.DataFrame | None]:
+    if not (INTRADAY_FORECASTS_CSV.exists() and INTRADAY_SUMMARY_CSV.exists()):
+        return None, None
+    forecasts = pd.read_csv(INTRADAY_FORECASTS_CSV, parse_dates=["target_ts"])
+    forecasts["target_ts"] = pd.to_datetime(forecasts["target_ts"], utc=True)
+    summary = pd.read_csv(INTRADAY_SUMMARY_CSV)
+    return forecasts, summary
 
 
 # --- View state ---------------------------------------------------------
@@ -1236,7 +1248,88 @@ else:  # st.session_state.view == "price"
                 "uncertainty (multiple models — disagreement on rank "
                 "ordering is the signal) or moving past day-ahead to "
                 "intraday markets where forecast updates between issue "
-                "times make uncertainty meaningfully decision-relevant."
+                "times make uncertainty meaningfully decision-relevant. "
+                "**Phase B.3 below tests the intraday-cadence hypothesis "
+                "directly.**"
+            )
+
+        # --- Intraday re-forecast spike (Phase B.3) ----------------------
+        intra_fc, intra_sum = load_intraday_spike()
+        if intra_fc is not None and intra_sum is not None and not intra_sum.empty:
+            st.markdown("### Intraday re-forecast spike — does cadence help?")
+            st.markdown(
+                "Phase B.3: the production XGBoost price model is trained at "
+                "a single issue time (D-1 12:00 Berlin). Calling the same "
+                "model at multiple issue times across the day-before-delivery "
+                "window is a proof-of-concept that the feature pipeline + "
+                "leakage tests + drift monitor all extend cleanly to a finer "
+                "cadence — *without retraining or code changes*. "
+                "Code: `scripts/run_intraday_spike.py`."
+            )
+
+            # Pick the delivery day where cadence helped most for the chart
+            sum_loc = intra_sum.copy()
+            sum_loc["delivery_date"] = sum_loc["delivery_date"].astype(str)
+            cad_help = (
+                sum_loc.groupby("delivery_date")["mae_eur"].agg(["first", "last"])
+            )
+            cad_help["improvement"] = cad_help["first"] - cad_help["last"]
+            chart_day = str(cad_help["improvement"].idxmax())
+
+            st.markdown(
+                f"Delivery day **{chart_day}** — the cleanest case in the spike. "
+                "Each shade is the same model issued at a different time on "
+                "the day before. The lines move only slightly because the "
+                "production model wasn't trained for intraday cadence — "
+                "what's working is the *infrastructure*."
+            )
+            st.plotly_chart(
+                charts.intraday_spike_chart(intra_fc, chart_day),
+                use_container_width=True,
+                config={"displaylogo": False},
+                key=f"chart_intraday_spike_{chart_day}",
+            )
+
+            # Per-day MAE table across all spike days
+            md_lines = [
+                "| Delivery day | D-1 06:00 MAE | D-1 12:00 (gate) | D-1 18:00 | D-1 21:00 | Naive MAE |",
+                "|---|---|---|---|---|---|",
+            ]
+            for d, g in sum_loc.groupby("delivery_date"):
+                pivot = g.set_index("issue_label")["mae_eur"]
+                naive = float(g["naive_mae_eur"].iloc[0])
+                cells = [
+                    f"{pivot.get('D-1 06:00', float('nan')):.2f}",
+                    f"{pivot.get('D-1 12:00 (gate)', float('nan')):.2f}",
+                    f"{pivot.get('D-1 18:00', float('nan')):.2f}",
+                    f"{pivot.get('D-1 21:00', float('nan')):.2f}",
+                ]
+                md_lines.append(f"| {d} | {cells[0]} | {cells[1]} | {cells[2]} | {cells[3]} | {naive:.2f} |")
+            st.markdown("\n".join(md_lines))
+
+            st.markdown(
+                "**The third honest finding:** *the infrastructure extends, "
+                "but the model doesn't yet extract much value from the "
+                "cadence.* Across five delivery days the MAE shifts by less "
+                "than 1 €/MWh between earliest and latest issue, and "
+                "occasionally gets slightly worse at later issues — "
+                "consistent with the model's training distribution being "
+                "a single D-1 12:00 issue. The features that *should* "
+                "carry intraday signal — the latest NWP cycle that landed "
+                "at 18:00 UTC, recent imbalance signals, intraday-auction "
+                "prints from the morning — aren't part of the current "
+                "feature set."
+            )
+            st.markdown(
+                "**What a production intraday model would add:** (1) "
+                "training windows sampled at multiple issue times, so the "
+                "model learns to weight late-arriving features; (2) "
+                "intraday-specific features (NWP-update recency, recent "
+                "imbalance flow, intraday-auction prints); (3) a finer "
+                "re-issue cron — every 15-60 min — backed by the same "
+                "drift monitor + dispatch translation already in this "
+                "repo. The spike proves the surrounding machinery; the "
+                "model retrain is the named next milestone."
             )
 
 

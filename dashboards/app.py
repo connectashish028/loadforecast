@@ -1086,55 +1086,25 @@ else:  # st.session_state.view == "price"
         if rp is not None and not rp.empty:
             st.markdown("### Risk-aware dispatch — what works and what doesn't")
             st.markdown(
-                "Phase B.1 attempt: replace greedy P50 with band-aware "
-                "policies that should improve the worst-day tail. Five "
-                "variants on the same 61-day holdout."
+                "Phase B.1: replace greedy P50 with band-aware policies "
+                "that should improve the worst-day tail. Five variants on "
+                "the same 61-day holdout. Hover for each policy's worst "
+                "day and days-naive-won counts."
             )
-            naive_total = float(rp["naive_pnl"].sum())
-            oracle_total = float(rp["oracle_pnl"].sum())
-            POLICY_DESC = [
-                ("greedy_p50",      "Greedy P50",                 "baseline · charge=discharge=P50"),
-                ("p10p90",          "P10 charge / P90 discharge", "optimistic — use bands as low/high estimates"),
-                ("robust_p90p10",   "Robust P90/P10",             "worst-case — buy at P90, sell at P10"),
-                ("width_penalty",   "Width penalty (λ=0.1)",      "P50 ± 0.1·(P90−P10) — soft penalty on wide bands"),
-                ("skip_wide_slots", "Skip top-20 % widest slots", "hard mask · drop most uncertain quarter-hours"),
-            ]
-            md_lines = [
-                "| Policy | What it does | Total P&L | % perfect-foresight | Uplift vs naive | Worst day vs naive | Days naive won |",
-                "|---|---|---|---|---|---|---|",
-            ]
-            for col_name, label, desc in POLICY_DESC:
-                col = f"pnl_{col_name}"
-                if col not in rp.columns:
-                    continue
-                total = float(rp[col].sum())
-                pct = total / oracle_total * 100
-                uplift = total - naive_total
-                daily_uplift = rp[col] - rp["naive_pnl"]
-                worst = float(daily_uplift.min())
-                lost = int((daily_uplift < 0).sum())
-                md_lines.append(
-                    f"| **{label}** | {desc} | €{total:,.0f} | {pct:.1f} % | "
-                    f"€{uplift:+,.0f} | €{worst:+,.0f} | {lost}/{len(rp)} |"
-                )
-            st.markdown("\n".join(md_lines))
+            st.plotly_chart(
+                charts.risk_policy_chart(rp),
+                use_container_width=True,
+                config={"displaylogo": False},
+                key="chart_risk_policy",
+            )
             st.markdown(
-                "**Honest finding:** *none of the four band-aware policies "
-                "beat greedy P50 on this holdout.* Two reasons: (1) the "
-                "quantile bands have ~71 % coverage vs the 80 % nominal — "
-                "**miscalibrated**, so any band-aware policy operates on "
-                "noisy uncertainty signal; (2) **uncertainty correlates "
-                "with opportunity** — the model's wide-band slots are "
-                "often its high-spread arbitrage opportunities, so "
-                "skipping them costs upside without saving the tail. "
-                "The gating step before risk-aware dispatch can outperform "
-                "is **conformal band calibration** — re-rank slots once "
-                "bands are calibrated, revisit the experiment then. "
-                "*This is a deliberate negative result; the script "
-                "(`scripts/run_risk_aware_dispatch.py`) is in the repo "
-                "so the experiment is reproducible.* "
-                "**Phase B.2 below tests the conformal-calibration "
-                "hypothesis directly.**"
+                "**Honest finding:** none of the four band-aware variants "
+                "beat greedy P50. Two reasons: (1) bands are miscalibrated "
+                "(~71 % coverage vs 80 % nominal — see B.2), so band-aware "
+                "policies operate on noisy uncertainty; (2) uncertainty "
+                "correlates with opportunity — the model's wide-band slots "
+                "are often its high-spread arbitrage opportunities. "
+                "Script: `scripts/run_risk_aware_dispatch.py`."
             )
 
         # --- Conformal calibration (Phase B.2) ---------------------------
@@ -1143,114 +1113,37 @@ else:  # st.session_state.view == "price"
             sd = dict(zip(cf_sum["metric"], cf_sum["value"], strict=True))
             cal_days = int(sd["cal_days"])
             test_days = int(sd["test_days"])
-            cov_pre = float(sd["test_coverage_uncalibrated"]) * 100
-            cov_marg = float(sd["test_coverage_marginal"]) * 100
-            cov_adapt = float(sd["test_coverage_adaptive"]) * 100
             q_marg = float(sd["marginal_q_hat_eur"])
             q_adapt = float(sd["adaptive_q_hat_mult"])
 
             st.markdown("### Conformal band calibration — and what it does (and doesn't) unblock")
             st.markdown(
-                f"**Setup:** split-conformal calibration on the same 61-day "
-                f"holdout. First **{cal_days} days** = calibration set; "
-                f"remaining **{test_days} days** = test set. Two variants: "
-                f"**marginal** (single scalar shift, q̂ = €{q_marg:.2f}/MWh) "
-                f"and **adaptive** (per-slot multiplier on band width, "
-                f"q̂ = {q_adapt:.3f}). Code: `src/loadforecast/conformal.py`, "
-                f"runner: `scripts/run_conformal_calibration.py`."
+                f"Split-conformal calibration on the same 61-day holdout: "
+                f"first {cal_days} days for calibration, remaining {test_days} "
+                f"for testing. **Marginal** widens all bands by a single "
+                f"scalar (q̂ = €{q_marg:.2f}/MWh); **adaptive** scales by "
+                f"per-slot width (q̂ = {q_adapt:.3f}× width). "
+                f"Code: `src/loadforecast/conformal.py`."
             )
-
-            # Coverage tile triplet (the clear win)
-            st.markdown(
-                f"""
-                <div class="stat-grid" style="grid-template-columns: repeat(3, 1fr);">
-                    <div class="stat-cell">
-                        <div class="stat-label">Uncalibrated band coverage
-                            <span class="info-tip">ⓘ<span class="info-tip-content">
-                                P10–P90 80 %-band coverage on the {test_days}-day test split. Nominal target 80 %.
-                            </span></span>
-                        </div>
-                        <div class="stat-value">{cov_pre:.1f}<span class="stat-unit">%</span></div>
-                    </div>
-                    <div class="stat-cell">
-                        <div class="stat-label">Marginal-calibrated
-                            <span class="info-tip">ⓘ<span class="info-tip-content">
-                                Same bands widened uniformly by ±€{q_marg:.2f}/MWh based on calibration-set residuals.
-                            </span></span>
-                        </div>
-                        <div class="stat-value">{cov_marg:.1f}<span class="stat-unit">%</span></div>
-                    </div>
-                    <div class="stat-cell">
-                        <div class="stat-label">Adaptive-calibrated
-                            <span class="info-tip">ⓘ<span class="info-tip-content">
-                                Bands widened proportionally to per-slot width by a factor of {q_adapt:.3f} (CQR-style).
-                            </span></span>
-                        </div>
-                        <div class="stat-value">{cov_adapt:.1f}<span class="stat-unit">%</span></div>
-                    </div>
-                </div>
-                """,
-                unsafe_allow_html=True,
-            )
-
-            # Dispatch comparison across (bands × policies). Pivot to a
-            # clean Greedy / P10P90 / WidthPenalty triplet — the three
-            # most readable policies, indexed by band variant.
-            cf_pivot = cf_pol.pivot(
-                index="bands", columns="policy", values="total_pnl",
-            ).reindex(["uncalibrated", "marginal", "adaptive"])
-            uplift_pivot = cf_pol.pivot(
-                index="bands", columns="policy", values="uplift_vs_naive",
-            ).reindex(["uncalibrated", "marginal", "adaptive"])
-            worst_pivot = cf_pol.pivot(
-                index="bands", columns="policy", values="worst_day_vs_naive",
-            ).reindex(["uncalibrated", "marginal", "adaptive"])
-
-            md_lines = [
-                "| Bands | Greedy P50 uplift | P10/P90 uplift | Width-penalty uplift | Greedy worst day | P10/P90 worst day |",
-                "|---|---|---|---|---|---|",
-            ]
-            for band in ["uncalibrated", "marginal", "adaptive"]:
-                if band in uplift_pivot.index:
-                    md_lines.append(
-                        f"| **{band}** | "
-                        f"€{uplift_pivot.loc[band, 'greedy_p50']:+,.0f} | "
-                        f"€{uplift_pivot.loc[band, 'p10p90']:+,.0f} | "
-                        f"€{uplift_pivot.loc[band, 'width_penalty']:+,.0f} | "
-                        f"€{worst_pivot.loc[band, 'greedy_p50']:+,.0f} | "
-                        f"€{worst_pivot.loc[band, 'p10p90']:+,.0f} |"
-                    )
-            st.markdown("\n".join(md_lines))
-
-            st.markdown(
-                "**Two-layer honest result:** "
-                f"(1) **Conformal works** — coverage moves from "
-                f"{cov_pre:.1f} % to {cov_marg:.1f} % (marginal) / "
-                f"{cov_adapt:.1f} % (adaptive) on the test split. The "
-                f"finite-sample guarantee is real. "
-                "(2) **But dispatch P&L is invariant to marginal "
-                "calibration** — every cell in the marginal row matches "
-                "the uncalibrated row exactly. Mathematically expected: "
-                "a uniform shift of every band by ±q̂ doesn't change the "
-                "*rank ordering* of slots, and all five dispatch policies "
-                "depend only on relative rank. Adaptive calibration changes "
-                "rank ordering slightly but shifts probability mass away "
-                "from the best policy (greedy P50)."
+            st.plotly_chart(
+                charts.conformal_chart(cf_pol, sd),
+                use_container_width=True,
+                config={"displaylogo": False},
+                key="chart_conformal",
             )
             st.markdown(
-                "**Diagnosis:** the bottleneck isn't band miscalibration. "
-                "It's that the model's per-slot uncertainty (even after "
-                "calibration) doesn't differentiate *which day's slot "
-                "ranking is reliable* from *which day's isn't*. **Slot "
-                "ordering matters more than slot uncertainty quantification** "
-                "for greedy day-ahead dispatch. "
-                "The next research direction is either ensemble-based "
-                "uncertainty (multiple models — disagreement on rank "
-                "ordering is the signal) or moving past day-ahead to "
-                "intraday markets where forecast updates between issue "
-                "times make uncertainty meaningfully decision-relevant. "
-                "**Phase B.3 below tests the intraday-cadence hypothesis "
-                "directly.**"
+                "**Two-layer honest result.** (1) Conformal works on "
+                "coverage — the bars on the left move from miscalibrated "
+                "to nominal. (2) But dispatch P&L is *invariant* to "
+                "marginal calibration: the three bars on the right are "
+                "identical in the marginal column because uniformly "
+                "shifting every band by ±q̂ doesn't change slot rank "
+                "ordering, and every dispatch policy depends on rank, "
+                "not absolute width. Slot ordering matters more than "
+                "slot uncertainty quantification for greedy DA dispatch. "
+                "Next research direction: ensemble-based uncertainty "
+                "(rank-disagreement signal) or intraday markets where "
+                "updates change rank ordering between issue times."
             )
 
         # --- DA vs Intraday — same architecture, two markets (Phase B.4) -
@@ -1262,68 +1155,54 @@ else:  # st.session_state.view == "price"
         if dvi_daily is not None and not dvi_daily.empty:
             st.markdown("### Same architecture, two markets — DA vs intraday continuous")
             st.markdown(
-                "Phase B.4 ingested German intraday continuous prices (SMARD "
-                "filter 252, volume-weighted average of all continuous "
-                "trades per delivery slot) and retrained an identical "
-                "XGBoost quantile model on the intraday target. Same 50 "
-                "features, same train/val/holdout splits, same sample "
-                "weights, same hyperparameters — only the target column "
-                "changes. Both models scored against the **realised prices "
-                "of their respective markets** on the same 61-day Mar-Apr "
-                "2026 holdout. Code: `scripts/train_xgboost_intraday.py` "
-                "+ `scripts/compare_da_vs_intraday.py`."
+                "Phase B.4: same XGBoost quantile pipeline, same 50 "
+                "features, same train/val/holdout splits — only the target "
+                "column changes (DA clearing → intraday continuous average, "
+                "SMARD filter 252). Each model dispatched against the "
+                "realised prices of *its own market* on the same 61-day "
+                "holdout. The lilac line in each panel is the model; the "
+                "dashed white line is naive yesterday; the dotted grey "
+                "line is perfect-foresight."
+            )
+            st.plotly_chart(
+                charts.da_vs_intraday_chart(dvi_daily),
+                use_container_width=True,
+                config={"displaylogo": False},
+                key="chart_da_vs_intraday",
             )
 
-            da_mae = float(dvi_daily["da_mae_model"].mean())
-            id_mae = float(dvi_daily["id_mae_model"].mean())
-            da_naive_mae = float(dvi_daily["da_mae_naive"].mean())
-            id_naive_mae = float(dvi_daily["id_mae_naive"].mean())
-            da_skill = (1 - da_mae / da_naive_mae) * 100
-            id_skill = (1 - id_mae / id_naive_mae) * 100
-            da_cov = float(dvi_daily["da_coverage"].mean()) * 100
-            id_cov = float(dvi_daily["id_coverage"].mean()) * 100
             da_oracle = float(dvi_daily["da_oracle_pnl"].sum())
             da_naive_pnl = float(dvi_daily["da_naive_pnl"].sum())
             da_model_pnl = float(dvi_daily["da_model_pnl"].sum())
             id_oracle = float(dvi_daily["id_oracle_pnl"].sum())
             id_naive_pnl = float(dvi_daily["id_naive_pnl"].sum())
             id_model_pnl = float(dvi_daily["id_model_pnl"].sum())
-
-            md_lines = [
-                "| Metric | Day-ahead model on DA | Intraday model on ID |",
-                "|---|---|---|",
-                f"| P50 MAE | {da_mae:.2f} €/MWh | {id_mae:.2f} €/MWh |",
-                f"| Naive P50 MAE | {da_naive_mae:.2f} €/MWh | {id_naive_mae:.2f} €/MWh |",
-                f"| **Skill vs naive** | **+{da_skill:.1f} %** | **+{id_skill:.1f} %** |",
-                f"| 80%-band coverage | {da_cov:.1f} % | {id_cov:.1f} % |",
-                f"| Perfect-foresight P&L | €{da_oracle:,.0f} | €{id_oracle:,.0f} |",
-                f"| Naive dispatch P&L | €{da_naive_pnl:,.0f} | €{id_naive_pnl:,.0f} |",
-                f"| **Model P50 P&L** | **€{da_model_pnl:,.0f} ({da_model_pnl/da_oracle*100:.1f} %)** | **€{id_model_pnl:,.0f} ({id_model_pnl/id_oracle*100:.1f} %)** |",
-                f"| **Uplift vs naive** | **€{da_model_pnl - da_naive_pnl:+,.0f}** | **€{id_model_pnl - id_naive_pnl:+,.0f}** |",
-            ]
-            st.markdown("\n".join(md_lines))
             st.markdown(
-                "**The Phase B positive.** After three honest negatives "
-                "(B.1 risk-aware, B.2 conformal, B.3 cadence), this is the "
-                "experiment that yields a working forecast for a different "
-                "German power market. The intraday model loses slightly on "
-                "absolute % of perfect-foresight (94.4 % vs 96.9 %) but "
-                "**adds slightly more €-uplift over its naive baseline** "
-                "(+€67 k vs +€65 k) — because intraday-yesterday is a "
-                "weaker baseline than DA-yesterday. Same machinery, "
-                "different market, comparable result."
+                f"""
+                <div class="stat-grid" style="grid-template-columns: repeat(2, 1fr);">
+                    <div class="stat-cell">
+                        <div class="stat-label">DA · % perfect-foresight · uplift vs naive</div>
+                        <div class="stat-value">{da_model_pnl/da_oracle*100:.1f}<span class="stat-unit">% · €{da_model_pnl - da_naive_pnl:+,.0f}</span></div>
+                    </div>
+                    <div class="stat-cell">
+                        <div class="stat-label">Intraday · % perfect-foresight · uplift vs naive</div>
+                        <div class="stat-value">{id_model_pnl/id_oracle*100:.1f}<span class="stat-unit">% · €{id_model_pnl - id_naive_pnl:+,.0f}</span></div>
+                    </div>
+                </div>
+                """,
+                unsafe_allow_html=True,
             )
             st.markdown(
-                "**What this rules in.** A trader running a battery against "
-                "both books could now dispatch on EITHER forecast — the "
-                "infrastructure produces both, the drift monitor would "
-                "score both, the dispatch sim runs both. **What it still "
-                "doesn't model:** intraday CONTINUOUS re-trading within "
-                "delivery day D (we forecast the avg intraday price once at "
-                "D-1 12:00, not as new trades print on D); ID1/ID3 hour-/"
-                "three-hour rolling indices; and the FCR/aFRR/mFRR "
-                "ancillary stack. Those are clean follow-ons that re-use "
-                "this same pipeline."
+                "**The Phase B positive.** After three honest negatives "
+                "(B.1, B.2, B.3 above) this is the experiment that yields "
+                "a working forecast for a different German power market. "
+                "The intraday model loses 2.5 pp on absolute % of "
+                "perfect-foresight but adds slightly more €-uplift over "
+                "its naive baseline (intraday-yesterday is a weaker repeat "
+                "baseline than DA-yesterday). What this still doesn't "
+                "model: intraday CONTINUOUS re-trading within delivery day "
+                "D, ID1/ID3 rolling indices, FCR / aFRR / mFRR ancillary "
+                "stack. Same pipeline extends to all three."
             )
 
 

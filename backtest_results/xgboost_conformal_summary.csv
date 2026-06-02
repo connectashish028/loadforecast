@@ -1,9 +1,0 @@
-metric,value
-test_days,41.0
-cal_days,20.0
-target_alpha,0.2
-marginal_q_hat_eur,5.800017089843749
-adaptive_q_hat_mult,0.16198090587475766
-test_coverage_uncalibrated,0.7235772357723578
-test_coverage_marginal,0.8498475609756098
-test_coverage_adaptive,0.8645833333333334

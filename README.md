@@ -101,12 +101,12 @@ A **GitHub Action** runs the refresh + smoke-check + drift monitor + tomorrow-PN
 
 ## Scope and boundaries
 
-The artifact now models two German power markets with the same pipeline. Naming what it does and doesn't model is part of the read:
+The artifact is intentionally focused. Naming what it does not model is part of the read:
 
-- **Markets in scope:** EPEX day-ahead spot (production) **and** German intraday continuous average price (parallel checkpoint after Phase B.4 — same XGBoost architecture, same 50 features, same train/val/holdout splits, only the target column changes). Intraday continuous model captures **94.4 %** of perfect-foresight dispatch P&L on the 61-day Mar–Apr 2026 holdout with **+€67 k uplift vs naive intraday-yesterday**. Both forecasts are issued at D-1 12:00 Berlin and scored daily.
-- **Dispatch policy:** greedy P50 ranking, recomputed independently each delivery day per market. No state-of-charge tracking across days, no cycling-degradation cost, no market-impact penalty — the battery is treated as a price-taker. Risk-aware position sizing (Phase B.1) was tested and didn't beat greedy on miscalibrated bands; the named next milestone is ensemble-based uncertainty.
-- **Forecasting cadence:** single issue at D-1 12:00 Berlin for both markets. Continuous intraday RE-TRADING within delivery day D — the truly time-sensitive product where a battery operator re-shapes positions as fresh trades print — is NOT modeled.
-- **Revenue stack:** energy arbitrage on DA + intraday continuous. FCR / aFRR / mFRR (capacity + activation) typically dominate a German BESS's actual revenue stack and are not modeled here. Same pipeline + drift monitor extends to them.
+- **Markets in scope:** EPEX day-ahead spot only. Continuous intraday and balancing / imbalance markets are not modeled. The same machinery (feature pipeline, quantile heads, leakage tests, drift monitor) extends to intraday with a finer re-issue cadence and intraday-specific features (NWP updates landing through the day, recent imbalance signals).
+- **Dispatch policy:** greedy P50 ranking, recomputed independently each delivery day. No state-of-charge tracking across days, no cycling-degradation cost, no market-impact penalty — the battery is treated as a price-taker. Risk-aware position sizing (quantile-weighted slot selection, worst-day cap) is the named next milestone.
+- **Forecasting cadence:** single issue at D-1 12:00 Berlin. No intraday re-forecast as new NWP arrives.
+- **Revenue stack:** energy arbitrage only. FCR / aFRR / mFRR (capacity + activation) typically dominate a German BESS's actual revenue and are not modeled here.
 
 ## Repo layout
 

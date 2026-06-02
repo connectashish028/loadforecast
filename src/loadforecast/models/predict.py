@@ -25,7 +25,6 @@ DEFAULT_QUANTILE_DIR = Path("model_checkpoints/lstm_quantile_v1")
 DEFAULT_PRICE_QUANTILE_DIR = Path("model_checkpoints/price_quantile_v4")
 DEFAULT_XGB_LOAD_DIR = Path("model_checkpoints/xgboost_load_v1")
 DEFAULT_XGB_PRICE_DIR = Path("model_checkpoints/xgboost_price_v1")
-DEFAULT_XGB_INTRADAY_DIR = Path("model_checkpoints/xgboost_intraday_v1")
 XGB_QUANTILES = (0.10, 0.50, 0.90)
 _XGB_CACHE: dict[str, dict] = {}
 
@@ -410,66 +409,12 @@ def xgboost_price_predict_full(
     return out
 
 
-def xgboost_intraday_predict_full(
-    df: pd.DataFrame,
-    issue_time: pd.Timestamp,
-    *,
-    model_dir: Path | str = DEFAULT_XGB_INTRADAY_DIR,
-) -> pd.DataFrame:
-    """Intraday continuous price forecast — XGBoost quantile regressor.
-
-    Same architecture, features, and training pipeline as
-    `xgboost_price_predict_full`, but the target is the intraday
-    continuous average price (SMARD filter 252) instead of the
-    day-ahead clearing price. Returns a (96, 3) DataFrame with
-    columns p10/p50/p90 in EUR/MWh, indexed by tz-aware delivery
-    timestamps.
-
-    The intraday continuous market has a wider per-slot distribution
-    around the DA clearing (std basis ~26 EUR/MWh in our 2022-2026
-    sample) so absolute MAE is expected to be materially higher than
-    the DA model's. The interesting comparison metric is **skill vs
-    naive intraday-yesterday**, not absolute MAE.
-    """
-    from ..features.build import build_target_day_features
-
-    PRICE_VRE_FC_COL = "fc_gen__photovoltaics_and_wind"
-
-    models = _load_xgb(Path(model_dir))
-    features = build_target_day_features(df, issue_time)
-
-    # Same 3 engineered VRE features the training script adds.
-    vre_fc = features["tso_vre_fc"]
-    features["tso_vre_fc_present"] = (~vre_fc.isna()).astype(np.float32)
-    features["tso_vre_fc"] = vre_fc.fillna(0.0)
-    load_fc = features["tso_load_fc"]
-    safe_load = load_fc.where(load_fc > 0, 1.0)
-    features["vre_to_load_ratio"] = (features["tso_vre_fc"] / safe_load).astype(np.float32)
-    ref_window = df[PRICE_VRE_FC_COL].loc[
-        issue_time - pd.Timedelta(days=90): issue_time
-    ].dropna()
-    q90 = float(ref_window.quantile(0.90)) if len(ref_window) > 100 else 1.0
-    features["vre_percentile"] = (features["tso_vre_fc"] / max(q90, 1.0)).astype(np.float32)
-
-    X = features.to_numpy(dtype=np.float32)
-    preds = np.stack([models[q].predict(X) for q in XGB_QUANTILES], axis=1)
-    preds.sort(axis=1)
-
-    out = pd.DataFrame(
-        {"p10": preds[:, 0], "p50": preds[:, 1], "p90": preds[:, 2]},
-        index=features.index,
-    )
-    out.index.name = "target_ts"
-    return out
-
-
 __all__ = [
     "DEFAULT_ATTENTION_DIR",
     "DEFAULT_MODEL_DIR",
     "DEFAULT_PRICE_QUANTILE_DIR",
     "DEFAULT_QUANTILE_DIR",
     "DEFAULT_WEATHER_DIR",
-    "DEFAULT_XGB_INTRADAY_DIR",
     "DEFAULT_XGB_LOAD_DIR",
     "DEFAULT_XGB_PRICE_DIR",
     "LoadedModel",
@@ -480,7 +425,6 @@ __all__ = [
     "lstm_residual_predict",
     "lstm_weather_predict",
     "price_quantile_predict_full",
-    "xgboost_intraday_predict_full",
     "xgboost_load_predict_full",
     "xgboost_price_predict_full",
 ]

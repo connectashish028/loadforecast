@@ -163,7 +163,7 @@ def _render_explanation(delivery_date: date, target: str, key: str) -> None:
     if res is None:
         return
     drivers, text, unit = res
-    with st.expander("🔍 Why this forecast? (per-day feature attribution)", expanded=False):
+    with st.expander("Why this forecast?  ·  per-day feature attribution", expanded=False):
         st.markdown(text)
         st.plotly_chart(
             charts.explanation_chart(drivers, unit),

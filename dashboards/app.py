@@ -34,6 +34,10 @@ for path in (ROOT, ROOT / "src"):
 
 from dashboards import charts, styles  # noqa: E402
 from loadforecast.backtest import issue_time_for, load_smard_15min  # noqa: E402
+from loadforecast.models.explain import (  # noqa: E402
+    explain_xgboost_forecast,
+    plain_language,
+)
 from loadforecast.models.predict import (  # noqa: E402
     xgboost_load_predict_full,
     xgboost_price_predict_full,
@@ -133,6 +137,47 @@ def predict_price_for_day(delivery_date: date) -> pd.DataFrame | None:
     if out["p50"].isna().any():
         return None
     return out
+
+
+@st.cache_data(show_spinner="Explaining forecast…")
+def explain_for_day(delivery_date: date, target: str):
+    """Per-forecast TreeSHAP attribution for the explorer's selected day.
+    Returns (drivers, plain_text, unit) or None if it can't be built."""
+    issue = issue_time_for(delivery_date)
+    if issue > df.index.max():
+        return None
+    try:
+        exp = explain_xgboost_forecast(df, issue, target=target)
+    except Exception:
+        return None
+    return exp.drivers, plain_language(exp), exp.unit
+
+
+def _render_explanation(delivery_date: date, target: str, key: str) -> None:
+    """'Why this forecast?' panel — plain-language drivers + SHAP bars.
+
+    Behaviour-explanation (not outcome-reporting): for the selected day it
+    shows which features moved the forecast and by how much, via XGBoost's
+    native TreeSHAP (exact, additive attribution)."""
+    res = explain_for_day(delivery_date, target)
+    if res is None:
+        return
+    drivers, text, unit = res
+    with st.expander("🔍 Why this forecast? (per-day feature attribution)", expanded=False):
+        st.markdown(text)
+        st.plotly_chart(
+            charts.explanation_chart(drivers, unit),
+            use_container_width=True,
+            config={"displaylogo": False},
+            key=key,
+        )
+        st.caption(
+            "Lilac raises the forecast, blue lowers it. Bars are the mean "
+            "TreeSHAP contribution per feature across the day's 96 quarter-hours "
+            "— an exact, additive decomposition of the model's own output, not a "
+            "post-hoc guess. This is the same attribution I'd surface to a trader "
+            "to explain a forecast on a volatile day."
+        )
 
 
 @st.cache_data
@@ -565,6 +610,7 @@ if st.session_state.view == "load":
                 config={"displaylogo": False},
                 key="chart_explorer_load_error",
             )
+        _render_explanation(picked, "load", key="explain_load")
 
     # --- Load analysis panels -------------------------------------------
     st.markdown("## Where the model wins, by hour of day")
@@ -892,6 +938,7 @@ else:  # st.session_state.view == "price"
                 "clears, this section will populate with model vs. naive "
                 "error and the realised spread."
             )
+        _render_explanation(picked, "price", key="explain_price")
 
     # --- Price analysis panels ------------------------------------------
     st.markdown("## Where the price model wins, by hour of day")

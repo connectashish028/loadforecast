@@ -593,7 +593,41 @@ def architecture_drift_chart(drift_log, model: str, title: str | None = None) ->
     return fig
 
 
+def explanation_chart(
+    drivers: list,
+    unit: str,
+    title: str | None = None,
+) -> go.Figure:
+    """Horizontal SHAP-attribution bars: what pushed today's forecast up/down.
+
+    `drivers` is a list of objects with .label, .contribution (signed) and
+    .direction. Up = lilac (prediction colour), down = blue (actual colour),
+    so the eye reads 'lilac raises the forecast, blue lowers it'.
+    """
+    drivers = list(reversed(drivers))  # plotly puts the first item at the bottom
+    labels = [d.label for d in drivers]
+    vals = [d.contribution for d in drivers]
+    colors = [PREDICTION if d.direction == "up" else ACTUAL for d in drivers]
+
+    fig = go.Figure()
+    fig.add_vline(x=0, line=dict(color=TEXT_30, width=1))
+    fig.add_trace(go.Bar(
+        x=vals, y=labels, orientation="h",
+        marker=dict(color=colors),
+        text=[f"{v:+.1f}" for v in vals],
+        textposition="auto",
+        hovertemplate="%{y}<br>%{x:+.2f} " + unit + "<extra></extra>",
+        showlegend=False,
+    ))
+    layout = _base_layout(title=title, height=max(220, 46 * len(labels)))
+    layout["xaxis"] = {**_AXIS, "title": f"Mean push on the forecast ({unit})"}
+    layout["yaxis"] = {**_AXIS, "automargin": True}
+    fig.update_layout(**layout)
+    return fig
+
+
 __all__ = ["architecture_drift_chart",
+           "explanation_chart",
            "forecast_chart", "skill_chart", "error_chart",
            "ablation_chart", "hour_profile_chart",
            "price_forecast_chart",

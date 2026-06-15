@@ -17,6 +17,12 @@ on:
 permissions:
   contents: read
 
+# Cancel a superseded run when a newer commit lands on the same ref, so the
+# latest code is what gates — and so the daily bot's rapid commits don't queue.
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   test:
     runs-on: ubuntu-latest

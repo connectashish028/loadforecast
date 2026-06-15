@@ -1,0 +1,40 @@
+# Local guard rails so production breakage is caught BEFORE it reaches main
+# (and before Streamlit Cloud auto-redeploys the dashboard on push).
+#
+# One-time setup in the activated conda env:
+#     pip install pre-commit
+#     pre-commit install --hook-type pre-commit --hook-type pre-push
+#
+# Then:
+#   - every `git commit` runs ruff (fast, fixes lint before it lands)
+#   - every `git push` runs the preventive test suite (dashboard boots,
+#     requirements parity, inference contract) — the three checks that catch
+#     a green-CI-but-broken-production change.
+#
+# CI (tests.yml + lint.yml) runs the same checks as a server-side backstop;
+# this is the shift-left layer that catches issues without waiting for CI.
+
+repos:
+  # Fast lint + autofix on every commit. Pinned to match pyproject [tool.ruff].
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.5.7
+    hooks:
+      - id: ruff
+        args: [--fix]
+      - id: ruff-format
+        # Format check only — the project doesn't enforce ruff-format yet, so
+        # run it non-blocking via stages override if you want; left in for
+        # visibility. Remove this hook if it conflicts with existing style.
+        stages: [manual]
+
+  # Heavier preventive tests run only on push (not every commit), in the
+  # active environment (needs the project's deps + committed parquet/models).
+  - repo: local
+    hooks:
+      - id: production-safety-tests
+        name: production-safety tests (dashboard boot + requirements + inference contract)
+        entry: python -m pytest tests/test_dashboard_boots.py tests/test_requirements_parity.py tests/test_inference_contract.py -q
+        language: system
+        pass_filenames: false
+        always_run: true
+        stages: [pre-push]

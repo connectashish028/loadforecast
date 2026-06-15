@@ -670,10 +670,12 @@ else:  # st.session_state.view == "price"
         "to € on a battery operator's or BRP's P&L. **On a 10 MW / 20 MWh "
         "battery over the 61-day Mar–Apr 2026 holdout, the forecast "
         "captures ~97 % of perfect-foresight P&L vs the naive baseline's "
-        "81 %** — a **+€65 k uplift**. The dispatch sim is a price-taker "
-        "abstraction (no SoC tracking, no degradation, no market impact); "
-        "annualising and scaling to a larger fleet compounds those, so "
-        "the 61-day number on a 20 MWh asset is the hard read."
+        "81 %** — a **+€65 k uplift**. Dispatch is a greedy ranking "
+        "heuristic, not an optimiser; the **% of perfect-foresight is "
+        "the robust metric** (oracle / naive / model all run the identical "
+        "greedy), while the absolute € is an upper bound (no SoC-feasible "
+        "schedule, no degradation, no market impact). The 61-day number "
+        "on a 20 MWh asset is the hard read."
     )
 
     # --- Headline stats grid (price) ------------------------------------
@@ -1187,7 +1189,7 @@ st.markdown(
     are deliberate; naming them is part of the read.
 
     - **Markets in scope:** EPEX day-ahead spot only (the 12:00 Berlin auction). Continuous intraday and balancing / imbalance markets are not modeled. The same machinery — feature pipeline, quantile heads, leakage tests, drift monitor — extends naturally to intraday with a finer re-issue cadence and intraday-specific features (NWP updates landing through the day, recent imbalance signals).
-    - **Dispatch policy:** greedy P50 ranking, recomputed independently each delivery day. No state-of-charge tracking across days, no cycling-degradation cost, no market-impact penalty — the battery is a price-taker. Risk-aware position sizing (quantile-weighted slot selection, worst-day cap) is the named next milestone.
+    - **Dispatch policy:** a greedy ranking heuristic (charge the cheapest 24 quarter-hours, discharge the priciest 24), recomputed independently each delivery day — *not an optimiser*. The schedule isn't constrained to a realizable state-of-charge path, so the **absolute € is an upper bound**; the **% of perfect-foresight is policy-invariant** because oracle, naive, and model all run the identical greedy. (On this holdout the greedy equals the true LP optimum under the 3-cycle cap.) No cycling-degradation cost, no market-impact penalty — the battery is a price-taker. Risk-aware sizing + an SoC-constrained dispatch are the named next milestones.
     - **Forecasting cadence:** single issue at D-1 12:00 Berlin. No intraday re-forecast as new NWP arrives.
     - **Revenue stack:** energy arbitrage only. FCR / aFRR / mFRR (capacity + activation) typically make up the majority of a German BESS revenue stack and are not modeled here.
     """

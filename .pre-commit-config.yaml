@@ -2,35 +2,41 @@
 # (and before Streamlit Cloud auto-redeploys the dashboard on push).
 #
 # One-time setup in the activated conda env:
-#     pip install pre-commit
+#     pip install -e ".[dev]"          # installs ruff + pre-commit
 #     pre-commit install --hook-type pre-commit --hook-type pre-push
 #
 # Then:
-#   - every `git commit` runs ruff (fast, fixes lint before it lands)
+#   - every `git commit` runs ruff (fast; fixes lint before it lands)
 #   - every `git push` runs the preventive test suite (dashboard boots,
 #     requirements parity, inference contract) — the three checks that catch
 #     a green-CI-but-broken-production change.
 #
-# CI (tests.yml + lint.yml) runs the same checks as a server-side backstop;
-# this is the shift-left layer that catches issues without waiting for CI.
+# Both hooks use `language: system`, i.e. the ruff + python already installed
+# in the active environment — the SAME ruff CI installs (latest) and the same
+# one you run locally. This deliberately avoids the ruff-pre-commit repo hook,
+# whose independently-pinned ruff version drifts from the project's and
+# reformats files the real toolchain considers clean.
+#
+# IMPORTANT: run `git commit` / `git push` from the ACTIVATED conda env
+# (`conda activate loadforecast`). The hooks call bare `python`/`ruff`, which
+# must resolve to the env — outside it they'd hit a different interpreter that
+# lacks the project deps. CI (tests.yml + lint.yml) is the server-side backstop
+# regardless.
 
 repos:
-  # Fast lint + autofix on every commit. Pinned to match pyproject [tool.ruff].
-  - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.5.7
-    hooks:
-      - id: ruff
-        args: [--fix]
-      - id: ruff-format
-        # Format check only — the project doesn't enforce ruff-format yet, so
-        # run it non-blocking via stages override if you want; left in for
-        # visibility. Remove this hook if it conflicts with existing style.
-        stages: [manual]
-
-  # Heavier preventive tests run only on push (not every commit), in the
-  # active environment (needs the project's deps + committed parquet/models).
   - repo: local
     hooks:
+      # Fast lint + autofix on every commit, via the env's ruff (matches CI).
+      - id: ruff
+        name: ruff (lint + autofix, env ruff == CI ruff)
+        entry: python -m ruff check --fix src/ tests/ scripts/ dashboards/
+        language: system
+        pass_filenames: false
+        always_run: true
+        stages: [pre-commit]
+
+      # Heavier preventive tests run only on push, in the active environment
+      # (they need the project deps + committed parquet/checkpoints).
       - id: production-safety-tests
         name: production-safety tests (dashboard boot + requirements + inference contract)
         entry: python -m pytest tests/test_dashboard_boots.py tests/test_requirements_parity.py tests/test_inference_contract.py -q

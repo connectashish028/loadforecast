@@ -163,21 +163,23 @@ def _render_explanation(delivery_date: date, target: str, key: str) -> None:
     if res is None:
         return
     drivers, text, unit = res
-    with st.expander("Why this forecast?  ·  per-day feature attribution", expanded=False):
-        st.markdown(text)
-        st.plotly_chart(
-            charts.explanation_chart(drivers, unit),
-            use_container_width=True,
-            config={"displaylogo": False},
-            key=key,
-        )
-        st.caption(
-            "Lilac raises the forecast, blue lowers it. Bars are the mean "
-            "TreeSHAP contribution per feature across the day's 96 quarter-hours "
-            "— an exact, additive decomposition of the model's own output, not a "
-            "post-hoc guess. This is the same attribution I'd surface to a trader "
-            "to explain a forecast on a volatile day."
-        )
+    # Always-visible section (no st.expander — its collapse-arrow icon can
+    # render as a stray text fragment when the icon font is slow to load).
+    st.markdown("### Why this forecast?")
+    st.markdown(text)
+    st.plotly_chart(
+        charts.explanation_chart(drivers, unit),
+        use_container_width=True,
+        config={"displaylogo": False},
+        key=key,
+    )
+    st.caption(
+        "Lilac raises the forecast, blue lowers it. Bars are the mean "
+        "TreeSHAP contribution per feature across the day's 96 quarter-hours "
+        "— an exact, additive decomposition of the model's own output, not a "
+        "post-hoc guess. This is the same attribution I'd surface to a trader "
+        "to explain a forecast on a volatile day."
+    )
 
 
 @st.cache_data

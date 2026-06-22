@@ -27,6 +27,7 @@ DEFAULT_XGB_LOAD_DIR = Path("model_checkpoints/xgboost_load_v1")
 DEFAULT_XGB_PRICE_DIR = Path("model_checkpoints/xgboost_price_v1")
 XGB_QUANTILES = (0.10, 0.50, 0.90)
 _XGB_CACHE: dict[str, dict] = {}
+_CONFORMAL_CACHE: dict[str, object] = {}
 
 
 def _load_xgb(model_dir: Path) -> dict:
@@ -358,11 +359,35 @@ def xgboost_load_predict_full(
     return out
 
 
+def _load_conformal(model_dir: Path):
+    """Load a saved split-conformal calibration from `conformal.json` in the
+    model dir, or None if absent. Cached per model dir."""
+    key = str(model_dir.resolve())
+    if key in _CONFORMAL_CACHE:
+        return _CONFORMAL_CACHE[key]
+    cfg_path = model_dir / "conformal.json"
+    cal = None
+    if cfg_path.exists():
+        from ..conformal import ConformalCalibration
+
+        cfg = json.loads(cfg_path.read_text())
+        cal = ConformalCalibration(
+            target_alpha=cfg["target_alpha"],
+            q_hat=cfg["q_hat"],
+            variant=cfg["variant"],
+            cal_size=cfg.get("cal_size", 0),
+            cal_coverage_pre=cfg.get("cal_coverage_pre", float("nan")),
+        )
+    _CONFORMAL_CACHE[key] = cal
+    return cal
+
+
 def xgboost_price_predict_full(
     df: pd.DataFrame,
     issue_time: pd.Timestamp,
     *,
     model_dir: Path | str = DEFAULT_XGB_PRICE_DIR,
+    apply_conformal: bool = True,
 ) -> pd.DataFrame:
     """Production day-ahead price forecast — XGBoost quantile regressor.
 
@@ -375,6 +400,12 @@ def xgboost_price_predict_full(
     on the basis of the LSTM-vs-XGBoost ablation: XGBoost wins by
     25 % average MAE and +1.9 pp dispatch P&L. See
     `scripts/compare_lstm_vs_xgboost_price.py`.
+
+    If `apply_conformal=True` (default) and the model dir contains a
+    `conformal.json`, the P10/P90 band is widened by the calibrated
+    split-conformal offset so empirical coverage hits the 80 % nominal
+    target. P50 is untouched (so dispatch P&L is unchanged). Pass
+    `False` to get the raw bands (used to A/B the calibration).
     """
     from ..features.build import build_target_day_features
 
@@ -400,9 +431,17 @@ def xgboost_price_predict_full(
     preds = np.stack([models[q].predict(X) for q in XGB_QUANTILES], axis=1)
     # Sort per row so p10 <= p50 <= p90 — see comment in xgboost_load_predict_full.
     preds.sort(axis=1)
+    p10, p50, p90 = preds[:, 0], preds[:, 1], preds[:, 2]
+
+    if apply_conformal:
+        cal = _load_conformal(Path(model_dir))
+        if cal is not None:
+            from ..conformal import apply as apply_conformal_bands
+
+            p10, p90 = apply_conformal_bands(p10, p90, cal)
 
     out = pd.DataFrame(
-        {"p10": preds[:, 0], "p50": preds[:, 1], "p90": preds[:, 2]},
+        {"p10": p10, "p50": p50, "p90": p90},
         index=features.index,
     )
     out.index.name = "target_ts"

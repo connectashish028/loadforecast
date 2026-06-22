@@ -1,0 +1,12 @@
+{
+  "variant": "marginal",
+  "target_alpha": 0.2,
+  "q_hat": 4.677420043945318,
+  "cal_size": 8832,
+  "cal_coverage_pre": 0.6838768115942029,
+  "cal_window": [
+    "2026-03-01",
+    "2026-05-31"
+  ],
+  "note": "marginal split-conformal; widens P10/P90 by +/- q_hat; P50 untouched"
+}

@@ -438,7 +438,7 @@ if st.session_state.view == "load":
             <div class="stat-cell">
                 <div class="stat-label">80 % band hit rate
                     <span class="info-tip">ⓘ<span class="info-tip-content">
-                        Fraction of quarter-hours where the realised load lands inside the model's P10–P90 interval. Target 80 %. XGBoost's bands are slightly under-calibrated vs the LSTM's 78.3 % — a known trade-off; conformal calibration is on the follow-up list.
+                        Fraction of quarter-hours where the realised load lands inside the model's P10–P90 interval. Target 80 %. XGBoost's bands are slightly under-calibrated vs the LSTM's 78.3 %. Split-conformal calibration is now applied to the price bands (≈71 %→81 % forward coverage); the load bands are the next candidate.
                     </span></span>
                 </div>
                 <div class="stat-value">70.0<span class="stat-unit">%</span></div>
@@ -1226,7 +1226,7 @@ st.markdown(
     - **Target:** German grid load + day-ahead spot price, 15-min resolution, 96 steps per delivery day.
     - **Issue time:** D-1 12:00 Berlin (EPEX day-ahead gate). Leakage tested by scrambling all post-issue values and asserting feature parity.
     - **Load model:** predicts the TSO error (`actual − TSO_forecast`), adds the correction. Calendar + climatology already in the TSO baseline; the model learns the systematic remainder.
-    - **Price model:** raw price target (no public baseline exists for it). Features: raw `fc_gen__pv+wind` + engineered `vre_to_load_ratio` and `vre_percentile`. Tree splits handle missing inputs natively — no degraded-mode path needed.
+    - **Price model:** raw price target (no public baseline exists for it). Features: raw `fc_gen__pv+wind` + engineered `vre_to_load_ratio` and `vre_percentile`. Tree splits handle missing inputs natively — no degraded-mode path needed. The P10/P90 bands are **split-conformal calibrated** on a recent trailing window (P50 untouched), lifting forward coverage from ~71 % to ~81 % toward the 80 % nominal target with a finite-sample guarantee.
     - **Architecture:** XGBoost quantile regressors, one model per quantile, native `reg:quantileerror`. **47 features for load, 50 for price** (47 base + 3 engineered VRE). Comparison baseline retained: seq2seq LSTM(64) encoder/decoder + pinball loss, ~36 k parameters per model — see Architecture justification panel above.
     - **Skill score:** `1 − MAE_model / MAE_baseline`. Zero = ties, one = perfect.
     """

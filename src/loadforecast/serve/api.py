@@ -9,13 +9,15 @@ Endpoints:
     POST /forecast/price  -> 96 quarter-hour P10/P50/P90 PRICE forecast (EUR / MWh)
 
 Design:
-- Parquet + Keras models loaded once at startup (lifespan event), not per
-  request. TF startup is ~3s; loading per request would make the API
+- Parquet loaded once at startup (lifespan event), not per request. The
+  production models are XGBoost quantile regressors (cached on first predict
+  in `models.predict`); loading the parquet per request would make the API
   unusable.
-- The price endpoint applies the M10 extreme-tail clip if a clip config is
-  present in the price model directory. It also surfaces a `degraded_mode`
-  flag when SMARD's day-ahead VRE forecast hasn't published yet for the
-  requested delivery day.
+- The price endpoint returns split-conformal-calibrated P10/P90 bands when a
+  `conformal.json` is present in the price model directory (P50 untouched).
+  It also surfaces a `degraded_mode` flag when SMARD's day-ahead VRE forecast
+  hasn't published yet for the requested delivery day (XGBoost handles the
+  missing input natively, so the forecast still returns).
 - All times in responses are tz-aware ISO8601.
 """
 from __future__ import annotations
@@ -88,9 +90,9 @@ _state: dict[str, Any] = {}
 
 @asynccontextmanager
 async def _lifespan(app: FastAPI):
-    """Load the parquet at startup. The TF model is lazy-loaded inside the
-    predict module's _CACHE on first /forecast call; this matches existing
-    behaviour and keeps cold-start under 1s."""
+    """Load the parquet at startup. The XGBoost quantile models are lazy-
+    loaded and cached inside the predict module on the first /forecast call;
+    this keeps cold-start fast."""
     if not PARQUET_PATH.exists():
         raise RuntimeError(
             f"Parquet not found at {PARQUET_PATH.resolve()}. "
@@ -185,11 +187,11 @@ def forecast_price(req: ForecastRequest) -> PriceForecastResponse:
     """Probabilistic day-ahead price forecast (EUR/MWh).
 
     Targets the EPEX clearing price directly (no published baseline to
-    subtract). Applies the M10 extreme-tail clip on holiday/weekend ×
-    top-1 %-VRE days when the trigger fires. Surfaces a `degraded_mode`
-    flag when SMARD's VRE day-ahead forecast hasn't published for the
-    delivery day — the model still produces a useful forecast, but
-    accuracy degrades ~+38 % MAE.
+    subtract). P10/P90 are split-conformal-calibrated (P50 untouched).
+    Surfaces a `degraded_mode` flag when SMARD's VRE day-ahead forecast
+    hasn't published for the delivery day — XGBoost handles the missing
+    input natively via tree splits, so the forecast still returns, but
+    accuracy is lower without the VRE feature.
     """
     df = _state.get("df")
     if df is None:

@@ -54,6 +54,8 @@ Thumbs.db
 !backtest_results/lstm_vs_xgboost_load.csv
 !backtest_results/lstm_vs_xgboost_price.csv
 !backtest_results/lstm_vs_xgboost_price_extended.csv
+!backtest_results/transformer_3way_load.csv
+!backtest_results/transformer_3way_price.csv
 
 # Model artifacts — only the deployed + comparison-baseline models are committed;
 # experiments stay local. Older versions (price_quantile_v1, v3,
@@ -64,6 +66,8 @@ model_checkpoints/*
 !model_checkpoints/price_quantile_v4/
 !model_checkpoints/xgboost_load_v1/
 !model_checkpoints/xgboost_price_v1/
+!model_checkpoints/transformer_quantile_v1/
+!model_checkpoints/transformer_price_quantile_v1/
 mlruns/
 models/production/
 models/candidates/
